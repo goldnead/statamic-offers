@@ -95,7 +95,12 @@ class OffersController extends CpController
                 'required', 'string', 'max:191', 'regex:/^[a-z0-9][a-z0-9_-]*$/',
                 Rule::unique('offers', 'handle')->ignore($offer?->getKey()),
             ],
-            'product' => ['required', 'string', 'max:191'],
+            // Only what the catalogue actually sells. A free-text product was
+            // how an offer could be pointed at another offer, and that pair
+            // asked each other what they cost until the process ran out of
+            // memory — taking the listing you would have deleted it from with
+            // it.
+            'product' => ['required', 'string', 'max:191', Rule::in(array_keys(app(Catalogue::class)->all()))],
             // Nullable means "use the catalogue price". Nullable *integer*
             // means nobody can post "12,00" and have it read as 12 cents.
             'amount_cent' => ['nullable', 'integer', 'min:1'],
@@ -104,12 +109,16 @@ class OffersController extends CpController
             'headline' => ['nullable', 'string', 'max:191'],
             'body' => ['nullable', 'string', 'max:5000'],
             'button_label' => ['nullable', 'string', 'max:191'],
+            'image' => ['nullable', 'string', 'max:500'],
             'slot' => ['required', Rule::in(Offer::slots())],
             'active' => ['boolean'],
         ]);
 
+        // `validate()` omits a nullable key that was never sent, so reading it
+        // directly is a 500 on every client that leaves the field out — which
+        // is every client that is not this addon's own form.
         $data['active'] = $request->boolean('active');
-        $data['currency'] = $data['currency'] ? strtoupper($data['currency']) : null;
+        $data['currency'] = ($data['currency'] ?? null) ? strtoupper($data['currency']) : null;
 
         return $data;
     }

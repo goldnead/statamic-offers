@@ -53,6 +53,20 @@ class Offer extends Model
         ];
     }
 
+    /**
+     * How an offer is referred to where a product handle is expected.
+     *
+     * An empty prefix would let an offer and a product of the same name be
+     * mistaken for one another, and the offer — the one with the discount —
+     * would lose. So an empty setting falls back rather than being honoured.
+     */
+    public static function prefix(): string
+    {
+        $prefix = (string) config('statamic-offers.handle_prefix', 'offer:');
+
+        return $prefix === '' ? 'offer:' : $prefix;
+    }
+
     /** @return list<string> */
     public static function slots(): array
     {

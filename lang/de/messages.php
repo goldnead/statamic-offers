@@ -43,4 +43,6 @@ return [
     'no_price' => 'ohne Preis',
     'delete_title' => 'Angebot löschen?',
     'delete_body' => '„:name" wird gelöscht, samt seiner Zählung. Das lässt sich nicht rückgängig machen.',
+    'field_image' => 'Bild',
+    'field_image_help' => 'Adresse eines Bildes. Die Vorlage entscheidet, ob und wie es gezeigt wird.',
 ];
