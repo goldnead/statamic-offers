@@ -32,6 +32,12 @@ class ServiceProvider extends AddonServiceProvider
         parent::register();
 
         $this->mergeConfigFrom(__DIR__.'/../config/statamic-offers.php', 'statamic-offers');
+
+        // Registered here rather than in `bootAddon()`, which only runs when
+        // the addon is discovered through the manifest. Without it an offer
+        // resolves to nothing and simply cannot be bought — a failure that
+        // looks like a missing product rather than a missing registration.
+        $this->bootCatalogue();
     }
 
     public function bootAddon()
@@ -39,7 +45,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'statamic-offers');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
-        $this->bootCatalogue()->bootUtility();
+        $this->bootUtility();
 
         $this->publishes([
             __DIR__.'/../config/statamic-offers.php' => config_path('statamic-offers.php'),
