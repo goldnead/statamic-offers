@@ -1,0 +1,6 @@
+/vendor
+/node_modules
+/dist/hot
+.phpunit.result.cache
+.phpunit.cache
+composer.lock

@@ -1,0 +1,59 @@
+{
+  "name": "goldnead/statamic-offers",
+  "description": "Offers for Statamic: a product, a price of its own, the words that sell it, and where it appears. The piece between a catalogue and a funnel.",
+  "type": "statamic-addon",
+  "license": "proprietary",
+  "authors": [
+    {
+      "name": "Adrian Goldner"
+    }
+  ],
+  "require": {
+    "php": "^8.2",
+    "statamic/cms": "^6.0",
+    "goldnead/statamic-payments": "@dev"
+  },
+  "require-dev": {
+    "larastan/larastan": "^3.0",
+    "laravel/pint": "^1.18",
+    "orchestra/testbench": "^10.0 || ^11.0",
+    "phpunit/phpunit": "^11.0 || ^12.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Goldnead\\StatamicOffers\\": "src"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Goldnead\\StatamicOffers\\Tests\\": "tests"
+    }
+  },
+  "extra": {
+    "statamic": {
+      "name": "Statamic Offers",
+      "description": "A product, a price of its own, the words that sell it, and where it appears."
+    },
+    "laravel": {
+      "providers": [
+        "Goldnead\\StatamicOffers\\ServiceProvider"
+      ]
+    }
+  },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "../statamic-payments",
+      "options": {
+        "symlink": true
+      }
+    }
+  ],
+  "config": {
+    "allow-plugins": {
+      "pixelfear/composer-dist-plugin": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
