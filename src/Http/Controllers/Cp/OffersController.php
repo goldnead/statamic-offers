@@ -184,9 +184,9 @@ class OffersController extends CpController
     protected function products(): array
     {
         return collect(app(Catalogue::class)->all())
-            ->map(fn ($product, $handle) => [
-                'value' => (string) $handle,
-                'label' => is_array($product) ? ($product['name'] ?? (string) $handle) : (string) $handle,
+            ->map(fn (array $product, string $handle) => [
+                'value' => $handle,
+                'label' => $product['name'] ?? $handle,
             ])
             ->values()
             ->all();

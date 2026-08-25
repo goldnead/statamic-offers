@@ -6,3 +6,7 @@ parameters:
 
     paths:
         - src
+
+    # Corrects a wrong annotation in Statamic itself, see the stub for why.
+    stubFiles:
+        - phpstan/AddonServiceProvider.stub
