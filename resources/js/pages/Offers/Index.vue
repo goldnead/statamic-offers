@@ -32,7 +32,7 @@ const props = defineProps({
 const blank = () => ({
     name: '', handle: '', product: props.products[0]?.value ?? '',
     amount_cent: null, compare_at_cent: null, currency: null,
-    headline: '', body: '', button_label: '',
+    headline: '', body: '', button_label: '', image: '',
     slot: 'standalone', active: true,
 });
 
@@ -159,7 +159,7 @@ const statusColor = (row) => {
         >
             <template #cell-name="{ row }">
                 <button type="button" class="font-medium hover:text-primary" @click="edit(row)">{{ row.name }}</button>
-                <span v-if="!row.sellable" class="block text-2xs text-red-500">
+                <span v-if="!row.sellable" class="block text-2xs text-red-600 dark:text-red-400">
                     {{ __('statamic-offers::messages.not_sellable') }}
                 </span>
             </template>
@@ -276,6 +276,10 @@ const statusColor = (row) => {
 
                 <Field :label="__('statamic-offers::messages.field_button')" :error="errors.button_label">
                     <Input v-model="form.button_label" />
+                </Field>
+
+                <Field :label="__('statamic-offers::messages.field_image')" :instructions="__('statamic-offers::messages.field_image_help')" :error="errors.image">
+                    <Input v-model="form.image" />
                 </Field>
 
                 <Field :label="__('statamic-offers::messages.field_active')">

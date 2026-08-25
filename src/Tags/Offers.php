@@ -68,7 +68,7 @@ class Offers extends Tags
      */
     protected function row(Offer $offer): array
     {
-        $prefix = (string) config('statamic-offers.handle_prefix', 'offer:');
+        $prefix = Offer::prefix();
 
         return [
             'id' => $offer->id,

@@ -43,4 +43,6 @@ return [
     'no_price' => 'no price',
     'delete_title' => 'Delete this offer?',
     'delete_body' => '“:name” goes, and its counters with it. This cannot be undone.',
+    'field_image' => 'Image',
+    'field_image_help' => 'A URL. The template decides whether and how it is shown.',
 ];

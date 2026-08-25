@@ -22,7 +22,7 @@ class OfferAcceptance
 
     protected function countFor(Payment $payment): void
     {
-        $prefix = (string) config('statamic-offers.handle_prefix', 'offer:');
+        $prefix = Offer::prefix();
 
         // Every line, because an order bump is a line and it was accepted just
         // as much as the thing the buyer came for.

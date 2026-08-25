@@ -44,6 +44,7 @@ class ListedOffer extends JsonResource
                 'headline' => $this->headline,
                 'body' => $this->body,
                 'button_label' => $this->button_label,
+                'image' => $this->image,
                 'slot' => $this->slot,
                 'active' => $this->active,
             ],

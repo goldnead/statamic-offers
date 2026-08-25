@@ -66,32 +66,59 @@ class ServiceProvider extends AddonServiceProvider
      */
     protected function bootCatalogue(): self
     {
-        Catalogue::extend(function (string $handle): ?array {
-            $prefix = (string) config('statamic-offers.handle_prefix', 'offer:');
+        // Handles currently being resolved. An offer whose *product* is another
+        // offer would otherwise ask the catalogue, which asks this resolver,
+        // which asks the offer — until the process runs out of memory. It is
+        // reachable by a hand-made POST, by an import, by a seed; and once such
+        // a row exists, the listing you would delete it from dies too, because
+        // every row asks whether it is sellable.
+        $resolving = [];
+
+        Catalogue::extend(function (string $handle) use (&$resolving): ?array {
+            $prefix = Offer::prefix();
 
             if (! str_starts_with($handle, $prefix)) {
                 return null;
             }
 
-            $offer = Offer::query()
-                ->where('handle', substr($handle, strlen($prefix)))
-                ->first();
-
-            if (! $offer || ! $offer->isSellable()) {
+            if (isset($resolving[$handle])) {
                 return null;
             }
 
-            return [
-                'name' => $offer->name,
-                'amount_cent' => $offer->amountCent(),
-                'currency' => $offer->currency(),
-                // What the payment line will remember it was sold as. An offer
-                // renamed next year must not rewrite an old order.
-                'offer' => $offer->handle,
-            ];
+            $resolving[$handle] = true;
+
+            try {
+                return $this->resolveOffer($handle, $prefix);
+            } finally {
+                unset($resolving[$handle]);
+            }
         });
 
         return $this;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    protected function resolveOffer(string $handle, string $prefix): ?array
+    {
+
+        $offer = Offer::query()
+            ->where('handle', substr($handle, strlen($prefix)))
+            ->first();
+
+        if (! $offer || ! $offer->isSellable()) {
+            return null;
+        }
+
+        return [
+            'name' => $offer->name,
+            'amount_cent' => $offer->amountCent(),
+            'currency' => $offer->currency(),
+            // What the payment line will remember it was sold as. An offer
+            // renamed next year must not rewrite an old order.
+            'offer' => $offer->handle,
+        ];
     }
 
     protected function bootUtility(): self
