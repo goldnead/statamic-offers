@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.0
+
+### What's new
+
+- **`amountLocal()` and `compareAtLocal()`** — a price as the reader's language writes it. `amount()`
+  is unchanged and stays the machine-readable form: always a dot, always two decimals, whatever the
+  site's locale. Templates should use the local pair; anything that parses should keep using
+  `amount()`.
+
+  This existed because both readers were served by one method and the machine won: a German page
+  printed `249.00 EUR`, where the dot is not a decimal separator at all but a thousands group — so
+  the number was not merely styled oddly, it read as a different number.
+
+  Without `ext-intl` the local pair falls back to the dot rather than guessing.
+
 ## 1.1.0 — 2026-08-25
 
 ### What's new

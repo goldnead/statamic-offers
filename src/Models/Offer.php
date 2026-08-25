@@ -147,6 +147,13 @@ class Offer extends Model
     }
 
     /** The price as a decimal string, for display. */
+    /**
+     * The machine-readable amount: always a dot, always two decimals.
+     *
+     * Keep it that way. It is public API, it goes into JSON, and a comma here
+     * would silently change what a consumer parses. For something a person
+     * reads, use {@see self::amountLocal()}.
+     */
     public function amount(): ?string
     {
         $cent = $this->amountCent();
@@ -159,6 +166,41 @@ class Offer extends Model
         return $this->compare_at_cent === null
             ? null
             : number_format($this->compare_at_cent / 100, 2, '.', '');
+    }
+
+    /**
+     * The amount as the reader's locale writes it.
+     *
+     * A German page showing "249.00 EUR" reads as a machine talking, and the
+     * dot is not a decimal separator in that language at all — it groups
+     * thousands. This is what belongs in a template.
+     */
+    public function amountLocal(): ?string
+    {
+        return self::localise($this->amountCent());
+    }
+
+    public function compareAtLocal(): ?string
+    {
+        return self::localise($this->compare_at_cent);
+    }
+
+    /** Without ext-intl there is no locale knowledge, so the dot stays. */
+    public static function localise(?int $cent): ?string
+    {
+        if ($cent === null) {
+            return null;
+        }
+
+        if (! class_exists(\NumberFormatter::class)) {
+            return number_format($cent / 100, 2, '.', '');
+        }
+
+        $formatter = new \NumberFormatter(app()->getLocale(), \NumberFormatter::DECIMAL);
+        $formatter->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 2);
+        $formatter->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
+
+        return $formatter->format($cent / 100) ?: number_format($cent / 100, 2, '.', '');
     }
 
     /**
