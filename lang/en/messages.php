@@ -41,4 +41,6 @@ return [
     'field_active' => 'Active',
     'not_sellable' => 'Not sellable: the product is not in the catalogue.',
     'no_price' => 'no price',
+    'delete_title' => 'Delete this offer?',
+    'delete_body' => '“:name” goes, and its counters with it. This cannot be undone.',
 ];

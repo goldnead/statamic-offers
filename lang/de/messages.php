@@ -41,4 +41,6 @@ return [
     'field_active' => 'Aktiv',
     'not_sellable' => 'Nicht verkäuflich: das Produkt steht nicht im Katalog.',
     'no_price' => 'ohne Preis',
+    'delete_title' => 'Angebot löschen?',
+    'delete_body' => '„:name" wird gelöscht, samt seiner Zählung. Das lässt sich nicht rückgängig machen.',
 ];

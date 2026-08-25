@@ -1,0 +1,25 @@
+# Without this, every site that installs the addon downloads its tests and CI
+# config along with the code it actually runs.
+
+/.github            export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/.editorconfig      export-ignore
+/phpunit.xml        export-ignore
+/pint.json          export-ignore
+/phpstan.neon       export-ignore
+/phpstan-baseline.neon export-ignore
+/addon-lint.json    export-ignore
+/vite.config.js     export-ignore
+/package.json       export-ignore
+/package-lock.json  export-ignore
+/resources/js       export-ignore
+/resources/css      export-ignore
+/phpstan            export-ignore
+/screenshots        export-ignore
+
+# Keep: /config, /database, /dist, /lang, /routes, /src, README.md, CHANGELOG.md,
+# LICENSE.md. `/dist` is the built Control Panel bundle — the thing installed
+# sites actually load. The sources it is built from are ignored above: a site
+# installing this addon has no Node toolchain and no reason to download them.

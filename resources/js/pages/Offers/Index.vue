@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
 import {
     Header, Badge, Listing, EmptyStateMenu, EmptyStateItem, DocsCallout,
-    Button, CommandPaletteItem, Stack, Heading,
+    Button, CommandPaletteItem, Stack, Heading, ConfirmationModal,
     Field, Input, Textarea, Select, Switch, DropdownItem, Alert,
 } from '@statamic/cms/ui';
 
@@ -98,8 +98,24 @@ function save() {
     });
 }
 
-function remove(row) {
-    router.delete(`${props.storeUrl}/${row.id}`, { preserveScroll: true });
+/**
+ * Deleting asks first.
+ *
+ * An offer carries its counters, and those are the only record of whether it
+ * ever worked. Core asks before every destructive action; a listing that
+ * deletes on one click is the one screen in the Control Panel that does not.
+ */
+const deleting = ref(null);
+
+const deletePrompt = computed(() => deleting.value
+    ? __('statamic-offers::messages.delete_body', { name: deleting.value.name })
+    : '');
+
+function confirmRemove() {
+    const row = deleting.value;
+    deleting.value = null;
+
+    if (row) router.delete(`${props.storeUrl}/${row.id}`, { preserveScroll: true });
 }
 
 const statusColor = (row) => {
@@ -181,7 +197,7 @@ const statusColor = (row) => {
 
             <template #prepended-row-actions="{ row }">
                 <DropdownItem icon="edit" :text="__('Edit')" @click="edit(row)" />
-                <DropdownItem icon="trash" variant="destructive" :text="__('Delete')" @click="remove(row)" />
+                <DropdownItem icon="trash" variant="destructive" :text="__('Delete')" @click="deleting = row" />
             </template>
         </Listing>
 
@@ -189,9 +205,25 @@ const statusColor = (row) => {
              listing: it traps focus, hands `esc` back to whatever was under it,
              and cascades if something opens on top. A hand-built overlay does
              none of that and steals `esc` from its parent. -->
+        <!-- `:open`, not `v-if`. The modal owns its own visibility and its own
+             focus trap; mounting it conditionally means it never opens, which
+             looked exactly like a Delete button that does nothing. -->
+        <ConfirmationModal
+            :open="deleting !== null"
+            :title="__('statamic-offers::messages.delete_title')"
+            :body-text="deletePrompt"
+            :button-text="__('Delete')"
+            danger
+            @update:open="deleting = $event ? deleting : null"
+            @confirm="confirmRemove"
+        />
+
         <Stack v-model:open="open" size="narrow">
-            <div class="flex h-full flex-col bg-white dark:bg-gray-900">
-                <div class="border-b border-gray-200 dark:border-gray-800 px-6 py-4">
+            <!-- Surfaces use core's tokens, never a literal colour: the
+                 palette is themeable at runtime, and a hard-coded surface
+                 drifts the moment somebody re-themes their Control Panel. -->
+            <div class="flex h-full flex-col bg-content-bg">
+                <div class="border-b border-content-border px-6 py-4">
                     <Heading :text="title" size="lg" />
                 </div>
 
@@ -251,7 +283,7 @@ const statusColor = (row) => {
                 </Field>
                 </div>
 
-                <div class="border-t border-gray-200 dark:border-gray-800 px-6 py-4">
+                <div class="border-t border-content-border px-6 py-4">
                     <div class="flex justify-end gap-2">
                         <Button :text="__('Cancel')" @click="open = false" />
                         <Button variant="primary" :text="__('Save')" :disabled="saving" @click="save" />
