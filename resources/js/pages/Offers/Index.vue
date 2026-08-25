@@ -4,7 +4,7 @@ import { Head, router } from '@statamic/cms/inertia';
 import {
     Header, Badge, Listing, EmptyStateMenu, EmptyStateItem, DocsCallout,
     Button, CommandPaletteItem, Stack, Heading, ConfirmationModal,
-    Field, Input, Textarea, Select, Switch, DropdownItem, Alert,
+    Field, Input, Textarea, Select, Combobox, Switch, DropdownItem, Alert,
 } from '@statamic/cms/ui';
 
 /**
@@ -27,14 +27,23 @@ const props = defineProps({
     products: { type: Array, default: () => [] },
     slots: { type: Array, default: () => [] },
     currency: { type: String, default: 'EUR' },
+    bumpOptions: { type: Array, default: () => [] },
+    t: { type: Object, required: true },
 });
 
 const blank = () => ({
     name: '', handle: '', product: props.products[0]?.value ?? '',
     amount_cent: null, compare_at_cent: null, currency: null,
     headline: '', body: '', button_label: '', image: '',
-    slot: 'standalone', active: true,
+    slot: 'standalone', bumps: [], active: true,
 });
+
+/**
+ * The listing fetches its own rows over axios; an Inertia redirect updates the
+ * page's props but never touches them. Without asking it to refresh, a saved
+ * row simply is not there afterwards and the save looks like it failed.
+ */
+const listing = ref(null);
 
 const open = ref(false);
 const saving = ref(false);
@@ -42,11 +51,28 @@ const errors = ref({});
 const editing = ref(null);
 const form = ref(blank());
 
-const title = computed(() => editing.value
-    ? __('statamic-offers::messages.edit_offer')
-    : __('statamic-offers::messages.new_offer'));
+const title = computed(() => (editing.value ? props.t.edit : props.t.new));
 
 const slotHelp = computed(() => props.slots.find((s) => s.value === form.value.slot)?.description ?? '');
+
+/**
+ * An offer may not carry itself.
+ *
+ * Filtered here as well as refused on the server: the server call is what makes
+ * it true, this is what stops somebody picking an option that was never going
+ * to save.
+ */
+const availableBumps = computed(() => props.bumpOptions.filter((o) => o.value !== form.value.handle));
+
+/**
+ * Laravel reports a rejected entry as `bumps.0`, not `bumps`, so a field bound
+ * to `errors.bumps` alone shows nothing and the save looks like it worked.
+ */
+const bumpsError = computed(() => {
+    const key = Object.keys(errors.value).find((k) => k === 'bumps' || k.startsWith('bumps.'));
+
+    return key ? errors.value[key] : null;
+});
 
 function create() {
     editing.value = null;
@@ -93,7 +119,7 @@ function save() {
     router[method](url, form.value, {
         preserveScroll: true,
         onError: (e) => { errors.value = e || {}; },
-        onSuccess: () => { open.value = false; errors.value = {}; },
+        onSuccess: () => { open.value = false; errors.value = {}; listing.value?.refresh(); },
         onFinish: () => { saving.value = false; },
     });
 }
@@ -107,15 +133,20 @@ function save() {
  */
 const deleting = ref(null);
 
-const deletePrompt = computed(() => deleting.value
-    ? __('statamic-offers::messages.delete_body', { name: deleting.value.name })
-    : '');
+const deletePrompt = computed(() => (deleting.value
+    ? props.t.delete_body.replace(':name', deleting.value.name)
+    : ''));
 
 function confirmRemove() {
     const row = deleting.value;
     deleting.value = null;
 
-    if (row) router.delete(`${props.storeUrl}/${row.id}`, { preserveScroll: true });
+    if (row) {
+        router.delete(`${props.storeUrl}/${row.id}`, {
+            preserveScroll: true,
+            onSuccess: () => listing.value?.refresh(),
+        });
+    }
 }
 
 const statusColor = (row) => {
@@ -127,23 +158,23 @@ const statusColor = (row) => {
 
 <template>
     <div class="max-w-page mx-auto" data-max-width-wrapper>
-        <Head :title="[__('statamic-offers::messages.utility_title')]" />
+        <Head :title="[t.title]" />
 
-        <Header :title="__('statamic-offers::messages.utility_title')" icon="money-cashier-price-tag">
-            <Button variant="primary" :text="__('statamic-offers::messages.new_offer')" @click="create" />
+        <Header :title="t.title" icon="money-cashier-price-tag">
+            <Button variant="primary" :text="t.new" @click="create" />
         </Header>
 
         <CommandPaletteItem
-            :text="[__('Utilities'), __('statamic-offers::messages.utility_title')]"
+            :text="[t.utilities, t.title]"
             :url="listingUrl"
             icon="money-cashier-price-tag"
             prioritize
         />
 
-        <EmptyStateMenu v-if="!hasAny" :heading="__('statamic-offers::messages.empty_heading')">
+        <EmptyStateMenu v-if="!hasAny" :heading="t.empty_heading">
             <EmptyStateItem
-                :heading="__('statamic-offers::messages.empty_title')"
-                :description="__('statamic-offers::messages.empty_description')"
+                :heading="t.empty_title"
+                :description="t.empty_description"
                 icon="money-cashier-price-tag"
                 @click="create"
             />
@@ -151,6 +182,7 @@ const statusColor = (row) => {
 
         <Listing
             v-else
+            ref="listing"
             :url="listingUrl"
             :sort-column="sortColumn"
             :sort-direction="sortDirection"
@@ -160,7 +192,7 @@ const statusColor = (row) => {
             <template #cell-name="{ row }">
                 <button type="button" class="font-medium hover:text-primary" @click="edit(row)">{{ row.name }}</button>
                 <span v-if="!row.sellable" class="block text-2xs text-red-600 dark:text-red-400">
-                    {{ __('statamic-offers::messages.not_sellable') }}
+                    {{ t.not_sellable }}
                 </span>
             </template>
 
@@ -170,7 +202,7 @@ const statusColor = (row) => {
 
             <template #cell-amount="{ row }">
                 <span v-if="row.amount" class="tabular-nums">{{ row.amount }} {{ row.currency }}</span>
-                <span v-else class="text-gray-500 dark:text-gray-400">{{ __('statamic-offers::messages.no_price') }}</span>
+                <span v-else class="text-gray-500 dark:text-gray-400">{{ t.no_price }}</span>
                 <span v-if="row.compare_at" class="block text-2xs text-gray-500 dark:text-gray-400 line-through tabular-nums">
                     {{ row.compare_at }} {{ row.currency }}
                 </span>
@@ -178,6 +210,12 @@ const statusColor = (row) => {
 
             <template #cell-slot="{ row }">
                 <Badge :text="row.slot_label" />
+            </template>
+
+            <!-- Empty rather than 0: a column full of zeroes reads as a
+                 broken feature, an empty cell reads as "none". -->
+            <template #cell-bumps="{ row }">
+                <span v-if="row.bumps_count" class="tabular-nums">{{ row.bumps_count }}</span>
             </template>
 
             <template #cell-performance="{ row }">
@@ -188,7 +226,7 @@ const statusColor = (row) => {
             </template>
 
             <template #cell-active="{ row }">
-                <Badge :color="statusColor(row)" :text="row.active ? __('Yes') : __('No')" />
+                <Badge :color="statusColor(row)" :text="row.active ? t.yes : t.no" />
             </template>
 
             <template #cell-product="{ row }">
@@ -196,8 +234,8 @@ const statusColor = (row) => {
             </template>
 
             <template #prepended-row-actions="{ row }">
-                <DropdownItem icon="edit" :text="__('Edit')" @click="edit(row)" />
-                <DropdownItem icon="trash" variant="destructive" :text="__('Delete')" @click="deleting = row" />
+                <DropdownItem icon="edit" :text="t.edit_action" @click="edit(row)" />
+                <DropdownItem icon="trash" variant="destructive" :text="t.delete_action" @click="deleting = row" />
             </template>
         </Listing>
 
@@ -210,9 +248,9 @@ const statusColor = (row) => {
              looked exactly like a Delete button that does nothing. -->
         <ConfirmationModal
             :open="deleting !== null"
-            :title="__('statamic-offers::messages.delete_title')"
+            :title="t.delete_title"
             :body-text="deletePrompt"
-            :button-text="__('Delete')"
+            :button-text="t.delete_action"
             danger
             @update:open="deleting = $event ? deleting : null"
             @confirm="confirmRemove"
@@ -230,25 +268,25 @@ const statusColor = (row) => {
                 <div class="flex-1 overflow-y-auto px-6 py-5 space-y-5">
                 <Alert v-if="errors.offer" variant="error" :text="errors.offer" />
 
-                <Field :label="__('statamic-offers::messages.field_name')" :instructions="__('statamic-offers::messages.field_name_help')" :error="errors.name" required>
+                <Field :label="t.field_name" :instructions="t.field_name_help" :error="errors.name" required>
                     <Input v-model="form.name" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_handle')" :instructions="__('statamic-offers::messages.field_handle_help')" :error="errors.handle" required>
+                <Field :label="t.field_handle" :instructions="t.field_handle_help" :error="errors.handle" required>
                     <Input v-model="form.handle" class="font-mono" @update:model-value="handleTouched = true" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_product')" :instructions="__('statamic-offers::messages.field_product_help')" :error="errors.product" required>
+                <Field :label="t.field_product" :instructions="t.field_product_help" :error="errors.product" required>
                     <Select v-model="form.product" :options="products" />
                 </Field>
 
                 <div>
                     <div class="grid grid-cols-2 gap-4">
-                        <Field :label="__('statamic-offers::messages.field_amount')" :error="errors.amount_cent">
+                        <Field :label="t.field_amount" :error="errors.amount_cent">
                             <Input v-model.number="form.amount_cent" type="number" min="1" :append="currency" />
                         </Field>
 
-                        <Field :label="__('statamic-offers::messages.field_compare_at')" :error="errors.compare_at_cent">
+                        <Field :label="t.field_compare_at" :error="errors.compare_at_cent">
                             <Input v-model.number="form.compare_at_cent" type="number" min="1" :append="currency" />
                         </Field>
                     </div>
@@ -257,47 +295,66 @@ const statusColor = (row) => {
                          one decision: what this costs here, and what it says it
                          would otherwise cost. -->
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{ __('statamic-offers::messages.field_amount_help') }}
-                        {{ __('statamic-offers::messages.field_compare_at_help') }}
+                        {{ t.field_amount_help }}
+                        {{ t.field_compare_at_help }}
                     </p>
                 </div>
 
-                <Field :label="__('statamic-offers::messages.field_slot')" :instructions="slotHelp" :error="errors.slot" required>
+                <Field :label="t.field_slot" :instructions="slotHelp" :error="errors.slot" required>
                     <Select v-model="form.slot" :options="slots" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_headline')" :error="errors.headline">
+                <!-- Only offers placed at checkout can be carried, and never
+                     this offer itself. The server refuses both again; this is
+                     the half that stops somebody picking an impossible one. -->
+                <Field
+                    :label="t.field_bumps"
+                    :instructions="availableBumps.length ? t.field_bumps_help : t.field_bumps_empty"
+                    :error="bumpsError"
+                >
+                    <Combobox
+                        v-model="form.bumps"
+                        :options="availableBumps"
+                        :placeholder="t.field_bumps_placeholder"
+                        :disabled="availableBumps.length === 0"
+                        multiple
+                        searchable
+                        clearable
+                    />
+                </Field>
+
+                <Field :label="t.field_headline" :error="errors.headline">
                     <Input v-model="form.headline" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_body')" :error="errors.body">
+                <Field :label="t.field_body" :error="errors.body">
                     <Textarea v-model="form.body" :rows="4" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_button')" :error="errors.button_label">
+                <Field :label="t.field_button" :error="errors.button_label">
                     <Input v-model="form.button_label" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_image')" :instructions="__('statamic-offers::messages.field_image_help')" :error="errors.image">
+                <Field :label="t.field_image" :instructions="t.field_image_help" :error="errors.image">
                     <Input v-model="form.image" />
                 </Field>
 
-                <Field :label="__('statamic-offers::messages.field_active')">
+                <Field :label="t.field_active">
                     <Switch v-model="form.active" />
                 </Field>
                 </div>
 
                 <div class="border-t border-content-border px-6 py-4">
                     <div class="flex justify-end gap-2">
-                        <Button :text="__('Cancel')" @click="open = false" />
-                        <Button variant="primary" :text="__('Save')" :disabled="saving" @click="save" />
+                        <Button :text="t.cancel" @click="open = false" />
+                        <Button variant="primary" :text="t.save" :disabled="saving" @click="save" />
                     </div>
                 </div>
             </div>
         </Stack>
 
         <DocsCallout
-            :topic="__('statamic-offers::messages.utility_title')"
+            :topic="t.title"
             url="https://github.com/goldnead/statamic-offers#readme"
         />
     </div>

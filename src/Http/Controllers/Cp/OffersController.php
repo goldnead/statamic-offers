@@ -52,6 +52,15 @@ class OffersController extends CpController
                 'description' => __('statamic-offers::messages.slot_'.$slot.'_description'),
             ])->all(),
             'currency' => (string) config('statamic-payments.currency', 'EUR'),
+            // Only offers that are actually placed at checkout. Handing over
+            // every offer and hoping the form picks the right ones is how a
+            // bump ends up pointing at a post-purchase upsell that then never
+            // renders.
+            'bumpOptions' => $this->bumpOptions(),
+            // Every label on the screen, translated here rather than in the
+            // template. See the coupons screen for the reasoning; the two are
+            // built the same way on purpose.
+            't' => $this->strings(),
         ]);
     }
 
@@ -111,7 +120,20 @@ class OffersController extends CpController
             'button_label' => ['nullable', 'string', 'max:191'],
             'image' => ['nullable', 'string', 'max:500'],
             'slot' => ['required', Rule::in(Offer::slots())],
+            // A select the browser fills freely. Every handle has to be an
+            // offer that exists *and* is placed at checkout, or the checkbox
+            // renders as a product the buyer cannot be charged for; and it may
+            // never be this offer, which would ask itself what it costs.
+            'bumps' => ['nullable', 'array'],
+            'bumps.*' => [
+                'string',
+                Rule::exists('offers', 'handle')->where('slot', Offer::SLOT_BUMP),
+                Rule::notIn([(string) $request->input('handle')]),
+            ],
             'active' => ['boolean'],
+        ], [
+            'bumps.*.exists' => __('statamic-offers::messages.field_bumps_invalid'),
+            'bumps.*.not_in' => __('statamic-offers::messages.field_bumps_invalid'),
         ]);
 
         // `validate()` omits a nullable key that was never sent, so reading it
@@ -119,6 +141,13 @@ class OffersController extends CpController
         // is every client that is not this addon's own form.
         $data['active'] = $request->boolean('active');
         $data['currency'] = ($data['currency'] ?? null) ? strtoupper($data['currency']) : null;
+
+        // Duplicates would render the same checkbox twice and charge for it
+        // twice. The order is kept, because the order somebody dragged them
+        // into is the whole editorial decision.
+        $data['bumps'] = array_values(array_unique(array_filter(
+            (array) ($data['bumps'] ?? []), 'is_string'
+        )));
 
         return $data;
     }
@@ -185,6 +214,68 @@ class OffersController extends CpController
         $direction = strtolower((string) $request->get('order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         return [$sortable[$requested] ?? 'name', $direction];
+    }
+
+    /**
+     * Offers that may be carried as a bump.
+     *
+     * @return list<array<string, string>>
+     */
+    protected function bumpOptions(): array
+    {
+        return Offer::query()
+            ->where('slot', Offer::SLOT_BUMP)
+            ->orderBy('name')
+            ->get(['handle', 'name'])
+            ->map(fn (Offer $offer) => ['value' => $offer->handle, 'label' => $offer->name])
+            ->all();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function strings(): array
+    {
+        return [
+            'title' => __('statamic-offers::messages.utility_title'),
+            'utilities' => __('Utilities'),
+            'empty_heading' => __('statamic-offers::messages.empty_heading'),
+            'empty_title' => __('statamic-offers::messages.empty_title'),
+            'empty_description' => __('statamic-offers::messages.empty_description'),
+            'new' => __('statamic-offers::messages.new_offer'),
+            'edit' => __('statamic-offers::messages.edit_offer'),
+            'delete_title' => __('statamic-offers::messages.delete_title'),
+            'delete_body' => __('statamic-offers::messages.delete_body', ['name' => ':name']),
+            'not_sellable' => __('statamic-offers::messages.not_sellable'),
+            'no_price' => __('statamic-offers::messages.no_price'),
+            'field_name' => __('statamic-offers::messages.field_name'),
+            'field_name_help' => __('statamic-offers::messages.field_name_help'),
+            'field_handle' => __('statamic-offers::messages.field_handle'),
+            'field_handle_help' => __('statamic-offers::messages.field_handle_help'),
+            'field_product' => __('statamic-offers::messages.field_product'),
+            'field_product_help' => __('statamic-offers::messages.field_product_help'),
+            'field_amount' => __('statamic-offers::messages.field_amount'),
+            'field_amount_help' => __('statamic-offers::messages.field_amount_help'),
+            'field_compare_at' => __('statamic-offers::messages.field_compare_at'),
+            'field_compare_at_help' => __('statamic-offers::messages.field_compare_at_help'),
+            'field_slot' => __('statamic-offers::messages.field_slot'),
+            'field_bumps' => __('statamic-offers::messages.field_bumps'),
+            'field_bumps_help' => __('statamic-offers::messages.field_bumps_help'),
+            'field_bumps_placeholder' => __('statamic-offers::messages.field_bumps_placeholder'),
+            'field_bumps_empty' => __('statamic-offers::messages.field_bumps_empty'),
+            'field_headline' => __('statamic-offers::messages.field_headline'),
+            'field_body' => __('statamic-offers::messages.field_body'),
+            'field_button' => __('statamic-offers::messages.field_button'),
+            'field_image' => __('statamic-offers::messages.field_image'),
+            'field_image_help' => __('statamic-offers::messages.field_image_help'),
+            'field_active' => __('statamic-offers::messages.field_active'),
+            'yes' => __('statamic-offers::messages.yes'),
+            'no' => __('statamic-offers::messages.no'),
+            'save' => __('Save'),
+            'cancel' => __('Cancel'),
+            'edit_action' => __('Edit'),
+            'delete_action' => __('Delete'),
+        ];
     }
 
     /**

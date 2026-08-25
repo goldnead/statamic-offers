@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $body
  * @property string|null $image
  * @property string|null $button_label
+ * @property list<string>|null $bumps
  * @property string $slot
  * @property bool $active
  * @property int $shown_count
@@ -50,6 +51,7 @@ class Offer extends Model
             'shown_count' => 'integer',
             'accepted_count' => 'integer',
             'meta' => 'array',
+            'bumps' => 'array',
         ];
     }
 
@@ -65,6 +67,33 @@ class Offer extends Model
         $prefix = (string) config('statamic-offers.handle_prefix', 'offer:');
 
         return $prefix === '' ? 'offer:' : $prefix;
+    }
+
+    /**
+     * The offers this one carries as checkboxes at checkout.
+     *
+     * Only ones marked as a bump and still sellable. An offer whose bump was
+     * switched off should quietly stop showing it, not present a box that
+     * refuses the whole checkout when ticked.
+     *
+     * @return list<self>
+     */
+    public function bumpOffers(): array
+    {
+        $handles = array_values(array_filter((array) ($this->bumps ?? []), 'is_string'));
+
+        if ($handles === []) {
+            return [];
+        }
+
+        return static::query()
+            ->whereIn('handle', $handles)
+            ->where('slot', self::SLOT_BUMP)
+            ->get()
+            ->filter(fn (self $offer) => $offer->isSellable() && $offer->handle !== $this->handle)
+            ->sortBy(fn (self $offer) => array_search($offer->handle, $handles, true))
+            ->values()
+            ->all();
     }
 
     /** @return list<string> */
@@ -94,8 +123,16 @@ class Offer extends Model
 
     public function currency(): string
     {
-        if ($this->currency) {
-            return $this->currency;
+        // `$this->currency` and not `$this->attributes['currency']` is a trap
+        // here, and it bit: this method is *called* `currency`, so when the
+        // column is not among the loaded attributes Eloquent falls through to
+        // relation resolution and tries to call this very method as a relation.
+        // On a model built in memory rather than read back from the table, that
+        // is an error rather than a null.
+        $own = $this->attributes['currency'] ?? null;
+
+        if (is_string($own) && $own !== '') {
+            return $own;
         }
 
         $product = app(Catalogue::class)->find($this->product);

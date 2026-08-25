@@ -2,15 +2,44 @@
 
 namespace Goldnead\StatamicOffers;
 
+use Goldnead\StatamicOffers\Actions\ActivateCoupon;
+use Goldnead\StatamicOffers\Actions\DeactivateCoupon;
+use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
+use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
+use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
 use Goldnead\StatamicPayments\Support\Catalogue;
+use Statamic\Actions\Action;
 use Statamic\Facades\Utility;
 use Statamic\Providers\AddonServiceProvider;
+use Statamic\Query\Scopes\Scope;
 
 class ServiceProvider extends AddonServiceProvider
 {
     protected $viewNamespace = 'statamic-offers';
+
+    /**
+     * Listed rather than left to the folder scan: autoloading resolves the
+     * addon through the manifest, which is exactly what is missing in a package
+     * test suite. A filter that is not registered does not fail loudly — it
+     * simply never appears on the screen.
+     *
+     * @var list<class-string<Scope>>
+     */
+    protected $scopes = [
+        CouponActive::class,
+        CouponLive::class,
+    ];
+
+    /**
+     * @var list<class-string<Action>>
+     */
+    protected $actions = [
+        ActivateCoupon::class,
+        DeactivateCoupon::class,
+    ];
 
     /**
      * @var array<string, mixed>
@@ -45,7 +74,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'statamic-offers');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
-        $this->bootUtility();
+        $this->bootUtilities();
 
         $this->publishes([
             __DIR__.'/../config/statamic-offers.php' => config_path('statamic-offers.php'),
@@ -121,17 +150,47 @@ class ServiceProvider extends AddonServiceProvider
         ];
     }
 
-    protected function bootUtility(): self
+    protected function bootUtilities(): self
     {
         // Inside `Utility::extend`, not straight in boot: `__()` during boot
         // resolves before core's `Localize` middleware has set the user's
         // language, and the nav entry would freeze in the application locale.
-        Utility::extend(fn () => $this->registerUtility());
+        Utility::extend(function () {
+            $this->registerOffersUtility();
+            $this->registerCouponsUtility();
+        });
 
         return $this;
     }
 
-    protected function registerUtility(): void
+    /**
+     * Coupons get their own utility, which is what buys the nav entry, the
+     * `access coupons utility` permission and the `can:` middleware on every
+     * route below it. A second screen hung off the offers utility would have
+     * inherited the offers permission, and "may edit the words on an upsell"
+     * is not the same authority as "may hand out discounts".
+     */
+    protected function registerCouponsUtility(): void
+    {
+        Utility::register('coupons')
+            ->action([CouponsController::class, 'index'])
+            ->title(__('statamic-offers::messages.coupons_utility_title'))
+            ->navTitle(__('statamic-offers::messages.coupons_utility_nav'))
+            ->icon('shopping-store-discount-percent')
+            ->description(__('statamic-offers::messages.coupons_utility_description'))
+            ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
+            ->routes(function ($router) {
+                // Before the `{coupon}` routes, or "actions" is read as a
+                // coupon id on the way in.
+                $router->post('actions', [CouponActionsController::class, 'run'])->name('actions');
+                $router->post('actions/list', [CouponActionsController::class, 'bulkActions'])->name('actions.list');
+                $router->post('/', [CouponsController::class, 'store'])->name('store');
+                $router->patch('{coupon}', [CouponsController::class, 'update'])->name('update');
+                $router->delete('{coupon}', [CouponsController::class, 'destroy'])->name('destroy');
+            });
+    }
+
+    protected function registerOffersUtility(): void
     {
         Utility::register('offers')
             ->action([OffersController::class, 'index'])

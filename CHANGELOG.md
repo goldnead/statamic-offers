@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.0 — 2026-08-25
+
+### What's new
+
+- **Bumps.** An offer can carry other offers as checkboxes at checkout, picked in the offer form
+  and shown in the order they were picked. Only offers placed at checkout can be picked, never the
+  offer itself, and the server refuses anything else — a select is a text field with a nice hat on.
+- **Coupons.** A second utility screen for the codes people type to pay less: a percentage or a
+  fixed amount, optionally limited to certain offers, a date range and a number of redemptions.
+  Filters for "active" and "valid right now", the latter as a query scope so the pager counts the
+  rows the filter left.
+
+### What's fixed
+
+- **A saved row appeared only after a reload.** The listing fetches its own rows and an Inertia
+  redirect never touches them, so saving an offer looked like it had failed. It now refreshes.
+- Prices and rates follow the Control Panel's language: a German CP writes `5,00 EUR` and `23,1 %`,
+  and the two screens of this addon agree with each other.
+- `Offer::currency()` read `$this->currency`, and because a method of that name exists, Eloquent
+  fell through to relation resolution whenever the column was not among the loaded attributes and
+  threw. It hit every offer built in memory rather than read back from the table.
+
+### Requires
+
+- `goldnead/statamic-payments` ^1.4, for `Discount` and zero-priced products.
+- Every label on both screens is translated on the server and handed to the page, so no screen can
+  end up showing a raw translation key.
+
 ## 1.0.1
 
 ### What's fixed

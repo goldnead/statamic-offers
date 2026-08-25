@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Http\Resources\Cp;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\CpNumber;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -19,12 +20,20 @@ class ListedOffer extends JsonResource
             'handle' => $this->handle,
             'name' => $this->name,
             'product' => $this->product,
-            'amount' => $this->amount(),
+            // Formatted here rather than by the model, so this listing and the
+            // coupons listing next door write a price the same way. The model's
+            // `amount()` is a machine-readable decimal and stays that way.
+            'amount' => $this->money($this->amountCent()),
             'currency' => $this->currency(),
-            'compare_at' => $this->compareAt(),
+            'compare_at' => $this->money($this->compare_at_cent),
             'own_price' => $this->amount_cent !== null,
             'slot' => $this->slot,
             'slot_label' => __('statamic-offers::messages.slot_'.$this->slot),
+            // A count, not a list: the column has one line and a row carrying
+            // four bumps would push the price out of view. Null rather than 0,
+            // because a column full of zeroes reads as a broken feature while
+            // an empty cell reads as "none".
+            'bumps_count' => count((array) ($this->bumps ?? [])) ?: null,
             'active' => $this->active,
             'sellable' => $this->isSellable(),
             'shown_count' => $this->shown_count,
@@ -32,7 +41,7 @@ class ListedOffer extends JsonResource
             // Worked out here rather than in the template so the screen and any
             // report agree, and so nobody divides by zero in Antlers.
             'conversion' => $this->shown_count > 0
-                ? round($this->accepted_count / $this->shown_count * 100, 1)
+                ? CpNumber::decimal($this->accepted_count / $this->shown_count * 100, 1)
                 : null,
             'edit_values' => [
                 'name' => $this->name,
@@ -46,8 +55,14 @@ class ListedOffer extends JsonResource
                 'button_label' => $this->button_label,
                 'image' => $this->image,
                 'slot' => $this->slot,
+                'bumps' => (array) ($this->bumps ?? []),
                 'active' => $this->active,
             ],
         ];
+    }
+
+    protected function money(?int $cent): ?string
+    {
+        return $cent === null ? null : CpNumber::decimal($cent / 100, 2);
     }
 }

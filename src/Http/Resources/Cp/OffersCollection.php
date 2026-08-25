@@ -37,9 +37,10 @@ class OffersCollection extends ResourceCollection
             Column::make('handle')->label(__('statamic-offers::messages.column_handle'))->sortable(true)->defaultOrder(2),
             Column::make('amount')->label(__('statamic-offers::messages.column_amount'))->sortable(true)->numeric(true)->defaultOrder(3),
             Column::make('slot')->label(__('statamic-offers::messages.column_slot'))->sortable(true)->defaultOrder(4),
-            Column::make('performance')->label(__('statamic-offers::messages.column_performance'))->sortable(false)->defaultOrder(5),
-            Column::make('active')->label(__('statamic-offers::messages.column_active'))->sortable(true)->defaultOrder(6),
-            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(7)->defaultVisibility(false)->visible(false),
+            Column::make('bumps')->label(__('statamic-offers::messages.column_bumps'))->sortable(false)->numeric(true)->defaultOrder(5),
+            Column::make('performance')->label(__('statamic-offers::messages.column_performance'))->sortable(false)->defaultOrder(6),
+            Column::make('active')->label(__('statamic-offers::messages.column_active'))->sortable(true)->defaultOrder(7),
+            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(8)->defaultVisibility(false)->visible(false),
         ]);
 
         if ($key = $this->columnPreferenceKey) {

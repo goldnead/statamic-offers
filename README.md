@@ -71,6 +71,34 @@ reprice it — and the checkout would charge the wrong amount with no sign that 
 
 `{{ offers:slot slot="bump" }}` yields every active offer for a slot.
 
+### Bumps
+
+An offer can carry other offers as checkboxes at checkout. Pick them in the **Bumps** field on the
+offer form; only offers placed **At checkout** can be picked, and the order you pick them in is the
+order they appear.
+
+The list on the offer is the authority, not the form the buyer sees. A ticked box that is not on
+that list is ignored, so nobody can add a cheap handle to the page and buy an unrelated product.
+
+```php
+$basket = Basket::make($offer, $request->input('bumps', []), $request->input('coupon'));
+```
+
+### Coupons
+
+**Utilities → Coupons** is where a code and what it is worth are decided. A coupon takes either a
+percentage or a fixed amount off, may be limited to certain offers, to a date range, and to a number
+of redemptions.
+
+This is the one place that looks like an exception to the price rule and is not: what arrives from
+the browser is a **code**, and what the code is worth is looked up in the table. A request that says
+"20 % off" is ignored; a request that says `FRUEHLING` is a question this table answers.
+
+Codes are matched however they are typed, so `FRUEHLING` and `fruehling` are the same coupon. A
+redemption is counted when a payment starts, not when a code is typed, and the last one cannot go to
+two people at once.
+
+
 **The `{{ if no_results }} … {{ else }}` is not optional.** Like every Statamic tag pair, this one
 parses its block once even when there is nothing to yield, so markup outside that branch prints an
 empty offer.
