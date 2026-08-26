@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.0
+
+### Fixed — ein Angebot war nur ein Preis, und das riss die Familie auseinander
+
+Der Katalog-Resolver gab `name`, `amount_cent`, `currency` und `offer` zurück. Alles andere über
+das verkaufte Ding steht am Produkt, und ein Angebot ist laut eigener Beschreibung „ein Produkt,
+dargestellt". Zwei Folgen, beide still:
+
+- **`digital` und die Steuerklasse fehlten** → `statamic-invoices` konnte für eine über ein Angebot
+  bezahlte Bestellung **gar keine Rechnung** schreiben. Die beworbene Kette Funnel → Angebot →
+  Zahlung → Rechnung riss am letzten Glied, auf jeder Installation, die die Familie so einsetzt,
+  wie die Doku sie beschreibt.
+- **`grants` fehlte** → wer über ein Angebot kaufte, bekam **keinen Zugang**. Die Zahlung ging
+  durch, das Geld kam an, der Zugang erschien nie. Ohne Fehler: „dieses Produkt gewährt nichts" und
+  „dieses Produkt kenne ich nicht" kamen beide als dasselbe `null` zurück.
+
+Der Resolver liefert jetzt das Produkt-Array mit den Überschreibungen des Angebots darüber. Der
+Angebotspreis und -name gewinnen, alles Übrige wird geerbt. **Erfunden wird nichts:** ein Angebot
+für ein Produkt, das `digital` nicht angibt, gibt es ebenfalls nicht an — und das Rechnungs-Addon
+verweigert dann weiterhin, statt zu raten.
+
+Dazu neu im Ergebnis: `product`, der Handle des Dings darunter. Steuerklassen werden je
+Produkt-Handle konfiguriert, und ein Angebot hat einen eigenen — ohne diesen Schlüssel wäre ein
+Angebot für ein ermäßigtes Produkt still auf die Standardklasse gefallen und hätte den falschen
+Satz auf ein Steuerdokument gedruckt.
+
+Drei ausgelieferte Addons, drei grüne Suiten, und der Fehler lag in der Lücke dazwischen.
+
 ## 1.2.0
 
 ### What's new

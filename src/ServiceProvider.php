@@ -140,6 +140,54 @@ class ServiceProvider extends AddonServiceProvider
             return null;
         }
 
+        // The product underneath, with the offer's own overrides on top.
+        //
+        // An offer is "a product, presented" — the class docblock says so, and
+        // amountCent()/currency() already fall through to the product when the
+        // offer has no opinion. Everything else about the thing being sold
+        // belongs to the product and always did: whether it is digital, which
+        // tax class applies, what access it grants.
+        //
+        // Returning only name and price is what broke the family. `digital`
+        // and the tax class live on the product, so an invoice for an offer
+        // purchase could not be written at all; `grants` lives there too, so
+        // nobody who bought through an offer received the access they paid
+        // for. Both failed silently — one produced no document, the other no
+        // entitlement, and neither said anything.
+        //
+        // Merged in this order on purpose: the offer wins where it has an
+        // opinion (its own name, its own discounted price), and inherits
+        // everything it has none about. Inventing tax facts for an offer is
+        // exactly what must not happen, and inheriting them from the product
+        // the offer points at is the only answer that cannot be a guess.
+        $product = (array) (app(Catalogue::class)->find($offer->product) ?? []);
+
+        // `handle` would name the underlying product, and this line is the
+        // offer. Dropped rather than overwritten so that Catalogue::find()
+        // sets it, once, from the handle it was asked about.
+        unset($product['handle']);
+
+        // The subscription keys are NOT inherited, and that is a decision
+        // rather than an oversight.
+        //
+        // Inheriting them was the accidental effect of merging the whole
+        // product array, and it would have decided something about money that
+        // nobody asked: `Subscriptions::start('offer:x')` was a guaranteed
+        // no-op before (no `interval` in the resolver's answer) and would
+        // suddenly open a running subscription whose recurring amount is the
+        // *offer* price — the discount, forever. `trial_amount_cent` would
+        // ride along unconverted on top of that, and silently vanish once it
+        // reached the offer's price.
+        //
+        // "An upsell at €12 for a €29 product" says nothing about what the
+        // second month costs. Until somebody decides that, an offer stays a
+        // one-off, which is exactly what it was before this method learned to
+        // inherit.
+        unset($product['interval'], $product['times'], $product['trial_days'], $product['trial_amount_cent']);
+
+        // The offer's own values on the LEFT: `+` keeps the left operand for
+        // duplicate keys. The other way round the product's name and full price
+        // would win over the offer's, which is the whole point of an offer.
         return [
             'name' => $offer->name,
             'amount_cent' => $offer->amountCent(),
@@ -147,7 +195,14 @@ class ServiceProvider extends AddonServiceProvider
             // What the payment line will remember it was sold as. An offer
             // renamed next year must not rewrite an old order.
             'offer' => $offer->handle,
-        ];
+            // The handle of the thing underneath. A site declares tax classes
+            // per product handle, and an offer has a handle of its own — so
+            // without this the offer would silently fall to the default class
+            // and put the wrong rate on a tax document. Inheriting the array
+            // is not enough; the *name* it was declared under has to travel
+            // too.
+            'product' => $offer->product,
+        ] + $product;
     }
 
     protected function bootUtilities(): self
