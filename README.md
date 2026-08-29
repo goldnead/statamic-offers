@@ -71,6 +71,42 @@ reprice it — and the checkout would charge the wrong amount with no sign that 
 
 `{{ offers:slot slot="bump" }}` yields every active offer for a slot.
 
+### Bundles
+
+An offer usually sells one product. Pick more under **Also included** and it sells all of them:
+one line, one price, everything handed over together.
+
+| | |
+|---|---|
+| **Price** | The offer's own, if it has one. Without one, the **sum of the parts** — never the first part's price, which is how three things get sold for the price of one. |
+| **Granted** | Everything every part grants, deduplicated. |
+| **On the invoice** | One line, filed under the **lead product** — the one in the Product field. Its handle is what a tax class hangs on. |
+
+**A bundle whose parts disagree about `digital` cannot be sold.** That key is not a description of
+the medium, it decides the place of supply and with it which of four mandatory notes the invoice
+carries (§ 3a UStG). Half a line delivered electronically has no right note, and picking one would
+be guessing at a tax question on a document that cannot be corrected afterwards. So the catalogue
+answers "no such thing", `Checkout::start()` refuses the whole order, and it does so before any
+money moves.
+
+The same goes for a part the catalogue no longer sells: the bundle stops being offered rather than
+quietly delivering less than was bought.
+
+**Bundles that grant more than one thing need `statamic-payments` 1.14 or newer.** Before that,
+`grants` had to be a single string and a list fell out of an `is_string()` check — granting nothing
+at all rather than the first item. Rather than sell into that, such a bundle refuses to resolve and
+says why in the log. The check asks the installed class, not a version number in a file.
+
+Consumers that need to know what was actually delivered read `products` off the resolved catalogue
+entry; `product` names only the lead.
+
+```php
+$eintrag = app(Catalogue::class)->find('offer:fruehlings-buendel');
+
+$eintrag['product'];  // 'noten-paket', the lead
+$eintrag['products']; // ['noten-paket', 'playback-paket', 'mitschnitt']
+```
+
 ### Bumps
 
 An offer can carry other offers as checkboxes at checkout. Pick them in the **Bumps** field on the

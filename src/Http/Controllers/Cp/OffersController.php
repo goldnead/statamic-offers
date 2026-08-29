@@ -110,6 +110,21 @@ class OffersController extends CpController
             // memory — taking the listing you would have deleted it from with
             // it.
             'product' => ['required', 'string', 'max:191', Rule::in(array_keys(app(Catalogue::class)->all()))],
+            // Was ausser dem Leitprodukt noch mitkommt. Dieselbe Schranke wie
+            // oben, und aus demselben Grund: ein freier Text hier waere der
+            // zweite Weg, ein Angebot auf ein Angebot zeigen zu lassen.
+            //
+            // `not_in` auf das Leitprodukt, weil ein Buendel, das sein eigenes
+            // Hauptstueck noch einmal auflistet, dessen Preis doppelt
+            // aufsummieren wuerde, sobald kein Buendelpreis eingetragen ist.
+            // Entfernt wird es unten trotzdem, falls es doch ankommt.
+            'products' => ['nullable', 'array'],
+            'products.*' => [
+                'string',
+                'max:191',
+                Rule::in(array_keys(app(Catalogue::class)->all())),
+                Rule::notIn([(string) $request->input('product')]),
+            ],
             // Nullable means "use the catalogue price". Nullable *integer*
             // means nobody can post "12,00" and have it read as 12 cents.
             'amount_cent' => ['nullable', 'integer', 'min:1'],
@@ -132,6 +147,8 @@ class OffersController extends CpController
             ],
             'active' => ['boolean'],
         ], [
+            'products.*.in' => __('statamic-offers::messages.field_products_invalid'),
+            'products.*.not_in' => __('statamic-offers::messages.field_products_invalid'),
             'bumps.*.exists' => __('statamic-offers::messages.field_bumps_invalid'),
             'bumps.*.not_in' => __('statamic-offers::messages.field_bumps_invalid'),
         ]);
@@ -148,6 +165,22 @@ class OffersController extends CpController
         $data['bumps'] = array_values(array_unique(array_filter(
             (array) ($data['bumps'] ?? []), 'is_string'
         )));
+
+        // Dieselbe Saeuberung fuer die Buendel-Teile, plus das Leitprodukt
+        // heraus: es steht schon in `product`, und ein zweites Mal in der Liste
+        // hiesse, es zweimal zu verkaufen.
+        $data['products'] = array_values(array_diff(
+            array_unique(array_filter((array) ($data['products'] ?? []), 'is_string')),
+            [(string) ($data['product'] ?? '')],
+        ));
+
+        // Leer heisst „kein Buendel", und das gehoert als `null` in die Spalte
+        // und nicht als `[]`. Ein leeres Array ist eine Aussage („diese Liste
+        // ist leer"), `null` ist die Abwesenheit einer — und die Spalte ist
+        // nullable, weil jede Zeile aus der Zeit davor genau das ist.
+        if ($data['products'] === []) {
+            $data['products'] = null;
+        }
 
         return $data;
     }
@@ -254,6 +287,11 @@ class OffersController extends CpController
             'field_handle_help' => __('statamic-offers::messages.field_handle_help'),
             'field_product' => __('statamic-offers::messages.field_product'),
             'field_product_help' => __('statamic-offers::messages.field_product_help'),
+            'field_products' => __('statamic-offers::messages.field_products'),
+            'field_products_help' => __('statamic-offers::messages.field_products_help'),
+            'field_products_bundle' => __('statamic-offers::messages.field_products_bundle'),
+            'field_products_placeholder' => __('statamic-offers::messages.field_products_placeholder'),
+            'bundle_of' => __('statamic-offers::messages.bundle_of'),
             'field_amount' => __('statamic-offers::messages.field_amount'),
             'field_amount_help' => __('statamic-offers::messages.field_amount_help'),
             'field_compare_at' => __('statamic-offers::messages.field_compare_at'),

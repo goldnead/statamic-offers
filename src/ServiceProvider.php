@@ -10,7 +10,9 @@ use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
+use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
 use Goldnead\StatamicPayments\Support\Catalogue;
+use Illuminate\Support\Facades\Log;
 use Statamic\Actions\Action;
 use Statamic\Facades\Utility;
 use Statamic\Providers\AddonServiceProvider;
@@ -185,6 +187,47 @@ class ServiceProvider extends AddonServiceProvider
         // inherit.
         unset($product['interval'], $product['times'], $product['trial_days'], $product['trial_amount_cent']);
 
+        // Ein Buendel gibt her, was alle seine Teile hergeben.
+        //
+        // **`grants` ist die Vereinigung, und das ist der Punkt eines
+        // Buendels.** Wer drei Kurse in einem Kauf bezahlt, bekommt drei
+        // Zugaenge. `statamic-payments` nimmt dafuer eine Liste; eine aeltere
+        // Fassung daneben laesst sie an `is_string()` fallen und vergibt dann
+        // gar nichts — deshalb steht die Mindestversion in der composer.json.
+        //
+        // **`digital` muss ueber alle Teile dasselbe sagen, sonst gibt es das
+        // Buendel nicht.** Es ist keine Beschreibung des Mediums, sondern die
+        // Angabe, die ueber den Leistungsort und damit ueber den Pflichthinweis
+        // auf der Rechnung entscheidet (§ 3a UStG). Eine Zeile, die zur Haelfte
+        // elektronisch erbracht ist, hat keinen richtigen Hinweis, und einen
+        // davon zu waehlen hiesse, eine Steuerfrage zu raten. Also lieber nicht
+        // verkaufbar: `null` heisst hier, `Checkout::start()` verweigert den
+        // ganzen Vorgang — laut, und bevor Geld fliesst.
+        //
+        // Links, damit die Buendel-Fakten die des Leitprodukts schlagen: sonst
+        // stuende dessen einzelnes `grants` weiter da und die uebrigen Teile
+        // waeren bezahlt und nicht freigeschaltet.
+        if ($offer->isBundle()) {
+            $gebuendelt = $this->bundleFacts($offer);
+
+            if ($gebuendelt === null) {
+                return null;
+            }
+
+            $product = $gebuendelt + $product;
+
+            // Und die Teile selbst, benannt.
+            //
+            // `product` nennt nur das Leitprodukt — das ist richtig fuer die
+            // Steuerklasse der Zeile und falsch fuer jeden, der wissen muss,
+            // *was* geliefert wurde. Ohne diesen Schluessel muesste ein
+            // Geschwister die Angebotstabelle selbst abfragen, um vom Handle
+            // auf die Teile zu kommen, und genau solche Abkuerzungen an der
+            // Naht vorbei haben in dieser Familie schon zweimal still nichts
+            // ausgeliefert.
+            $product['products'] = $offer->productHandles();
+        }
+
         // The offer's own values on the LEFT: `+` keeps the left operand for
         // duplicate keys. The other way round the product's name and full price
         // would win over the offer's, which is the whole point of an offer.
@@ -203,6 +246,109 @@ class ServiceProvider extends AddonServiceProvider
             // too.
             'product' => $offer->product,
         ] + $product;
+    }
+
+    /**
+     * Versteht die Zugangsbruecke nebenan eine Liste von `grants`?
+     *
+     * Gefragt wird die Methode, nicht die Version: eine Versionsnummer aus
+     * `composer.json` zu lesen heisst, der Datei zu glauben statt dem Code, und
+     * die beiden gehen bei einem Fork oder einem Pfad-Repository auseinander.
+     * `method_exists` sieht auch geschuetzte Methoden — dieselbe Pruefung, die
+     * die Bruecke selbst fuer `renew()` macht.
+     */
+    protected static function siblingUnderstandsGrantLists(): bool
+    {
+        if (! config('statamic-payments.entitlements.enabled', false)) {
+            return true;
+        }
+
+        return method_exists(EntitlementsBridge::class, 'slugsFor');
+    }
+
+    /**
+     * Was ein Buendel gemeinsam behauptet, oder nichts, wenn seine Teile sich
+     * widersprechen.
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function bundleFacts(Offer $offer): ?array
+    {
+        $grants = [];
+        $digital = null;
+
+        foreach ($offer->productHandles() as $teilHandle) {
+            $teil = app(Catalogue::class)->find($teilHandle);
+
+            if (! is_array($teil)) {
+                // `isSellable()` hat das schon geprueft. Hier steht es noch
+                // einmal, damit diese Methode auch dann stimmt, wenn sie
+                // irgendwann von woanders gerufen wird.
+                return null;
+            }
+
+            $teilGrants = $teil['grants'] ?? null;
+
+            foreach (is_array($teilGrants) ? $teilGrants : [$teilGrants] as $slug) {
+                if (is_string($slug) && $slug !== '') {
+                    $grants[] = $slug;
+                }
+            }
+
+            if (! array_key_exists('digital', $teil)) {
+                continue;
+            }
+
+            $teilDigital = (bool) $teil['digital'];
+
+            if ($digital !== null && $digital !== $teilDigital) {
+                Log::warning('statamic-offers: a bundle whose parts disagree about `digital` is not sellable; the tax note on its invoice line would have to be guessed.', [
+                    'offer' => $offer->handle,
+                    'products' => $offer->productHandles(),
+                ]);
+
+                return null;
+            }
+
+            $digital = $teilDigital;
+        }
+
+        $fakten = [];
+
+        if ($grants !== []) {
+            $fakten['grants'] = array_values(array_unique($grants));
+        }
+
+        // Kann das Geschwister nebenan ueberhaupt mehrere Zugaenge vergeben?
+        //
+        // Vor `statamic-payments` 1.14 nimmt `grants` nur eine Zeichenkette;
+        // eine Liste faellt dort an `is_string()` heraus und vergibt **gar
+        // nichts** — nicht etwa das erste Stueck. Ein Buendel wuerde also
+        // bezahlt, berechnet und nie geliefert, ohne dass irgendwo ein Fehler
+        // steht.
+        //
+        // Lieber nicht verkaufbar. Das ist unbequem und sichtbar: das Angebot
+        // erscheint nicht, jemand sucht danach und findet diese Zeile im Log.
+        // Die Alternative waere ein Verkauf, bei dem erst der Kaeufer merkt,
+        // dass nichts ankam.
+        //
+        // Nur wenn Zugaenge ueberhaupt vergeben werden. Ist die Bruecke aus,
+        // sagt `grants` nichts ueber diese Installation, und ein Buendel aus
+        // drei Dingen ohne Zugangsverwaltung ist voellig in Ordnung.
+        if (count($fakten['grants'] ?? []) > 1 && ! self::siblingUnderstandsGrantLists()) {
+            Log::warning('statamic-offers: a bundle that grants several things needs statamic-payments 1.14 or newer; on this version the grants would silently arrive as none at all.', [
+                'offer' => $offer->handle,
+                'grants' => $fakten['grants'],
+            ]);
+
+            return null;
+        }
+
+        if ($digital !== null) {
+            $fakten['digital'] = $digital;
+        }
+
+        return $fakten;
     }
 
     protected function bootUtilities(): self

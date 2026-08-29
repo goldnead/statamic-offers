@@ -52,6 +52,7 @@ class Offer extends Model
             'accepted_count' => 'integer',
             'meta' => 'array',
             'bumps' => 'array',
+            'products' => 'array',
         ];
     }
 
@@ -116,9 +117,58 @@ class Offer extends Model
             return $this->amount_cent;
         }
 
-        $product = app(Catalogue::class)->find($this->product);
+        // Ohne eigenen Preis gilt der Katalog — und bei einem Buendel die Summe
+        // seiner Teile, nicht der Preis des ersten.
+        //
+        // **Das ist die Stelle, an der ein Buendel Geld verschenkt haette.**
+        // Frueher fiel diese Methode auf `$this->product` zurueck; ein Buendel
+        // aus drei Produkten ohne eigenen Preis haette dann eines davon
+        // gekostet, und zwar wortlos. Ein Bundlepreis gehoert eingetragen, aber
+        // wenn keiner eingetragen ist, ist die Summe die einzige Zahl, die
+        // niemanden benachteiligt.
+        $summe = 0;
 
-        return $product['amount_cent'] ?? null;
+        foreach ($this->productHandles() as $handle) {
+            $product = app(Catalogue::class)->find($handle);
+            $teil = $product['amount_cent'] ?? null;
+
+            // Ein Teil, das der Katalog nicht kennt, macht die Summe zu einer
+            // Erfindung. Dann lieber gar kein Preis: `isSellable()` faellt
+            // darueber, und das Angebot verschwindet, statt falsch zu rechnen.
+            if (! is_int($teil)) {
+                return null;
+            }
+
+            $summe += $teil;
+        }
+
+        return $summe;
+    }
+
+    /**
+     * Alles, was dieses Angebot verkauft: das Leitprodukt und was mitkommt.
+     *
+     * Das Leitprodukt steht immer vorn. An ihm haengen Name, Steuerklasse und
+     * der Handle, unter dem die Rechnungszeile gefuehrt wird — ein Buendel muss
+     * diese Fragen mit einer Stimme beantworten, und die erste ist die des
+     * Leitprodukts.
+     *
+     * @return list<string>
+     */
+    public function productHandles(): array
+    {
+        $weitere = array_filter(
+            (array) ($this->products ?? []),
+            static fn (mixed $handle): bool => is_string($handle) && $handle !== '',
+        );
+
+        return array_values(array_unique([$this->product, ...$weitere]));
+    }
+
+    /** Verkauft dieses Angebot mehr als eine Sache? */
+    public function isBundle(): bool
+    {
+        return count($this->productHandles()) > 1;
     }
 
     public function currency(): string
@@ -140,10 +190,27 @@ class Offer extends Model
         return $product['currency'] ?? (string) config('statamic-payments.currency', 'EUR');
     }
 
-    /** Whether the product behind this offer actually exists and is sellable. */
+    /**
+     * Whether the products behind this offer actually exist and are sellable.
+     *
+     * **Jedes Teil, nicht nur das erste.** Faellt ein Stueck eines Buendels aus
+     * dem Katalog, wird nicht still weniger geliefert als verkauft wurde — dann
+     * ist das Buendel nicht mehr das, was auf der Seite steht, und gehoert
+     * nicht angeboten. Dieselbe Regel, die die Kasse schon fuer Bumps hat.
+     */
     public function isSellable(): bool
     {
-        return $this->active && $this->amountCent() !== null && app(Catalogue::class)->find($this->product) !== null;
+        if (! $this->active || $this->amountCent() === null) {
+            return false;
+        }
+
+        foreach ($this->productHandles() as $handle) {
+            if (app(Catalogue::class)->find($handle) === null) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** The price as a decimal string, for display. */

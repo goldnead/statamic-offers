@@ -20,6 +20,12 @@ class ListedOffer extends JsonResource
             'handle' => $this->handle,
             'name' => $this->name,
             'product' => $this->product,
+            // Wie viele Stuecke insgesamt, damit ein Buendel in der Liste als
+            // Buendel zu erkennen ist und nicht als ein Produkt mit einem
+            // seltsam hohen Preis. Null statt 1, aus demselben Grund wie bei
+            // `bumps_count`: eine Spalte voller Einsen liest sich wie ein
+            // Fehler, eine leere Zelle wie „kein Buendel".
+            'products_count' => $this->isBundle() ? count($this->productHandles()) : null,
             // Formatted here rather than by the model, so this listing and the
             // coupons listing next door write a price the same way. The model's
             // `amount()` is a machine-readable decimal and stays that way.
@@ -47,6 +53,7 @@ class ListedOffer extends JsonResource
                 'name' => $this->name,
                 'handle' => $this->handle,
                 'product' => $this->product,
+                'products' => array_values((array) ($this->products ?? [])),
                 'amount_cent' => $this->amount_cent,
                 'compare_at_cent' => $this->compare_at_cent,
                 'currency' => $this->currency,

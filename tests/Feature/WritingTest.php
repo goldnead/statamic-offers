@@ -149,4 +149,65 @@ class WritingTest extends TestCase
         // conversion report.
         $this->assertSame(0, Offer::count());
     }
+
+    #[Test]
+    public function a_bundle_can_be_written_from_the_screen(): void
+    {
+        $this->actingAs($this->user())
+            ->post('/cp/utilities/offers', $this->valid([
+                'products' => ['begleit-cd'],
+                'amount_cent' => 3500,
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $offer = Offer::sole();
+
+        $this->assertSame(['begleit-cd'], $offer->products);
+        $this->assertSame(['noten-paket', 'begleit-cd'], $offer->productHandles());
+        $this->assertTrue($offer->isBundle());
+    }
+
+    #[Test]
+    public function a_part_the_catalogue_does_not_have_is_refused(): void
+    {
+        // Dieselbe Schranke wie am Leitprodukt, und aus demselben Grund: ein
+        // freies Textfeld hier waere der zweite Weg, ein Angebot auf ein
+        // Angebot zeigen zu lassen.
+        foreach (['gibt-es-nicht', 'offer:fruehling-upsell'] as $unmoeglich) {
+            $this->actingAs($this->user())
+                ->post('/cp/utilities/offers', $this->valid([
+                    'handle' => 'versuch-'.md5($unmoeglich),
+                    'products' => [$unmoeglich],
+                ]))
+                ->assertSessionHasErrors('products.0');
+        }
+
+        $this->assertSame(0, Offer::count());
+    }
+
+    #[Test]
+    public function the_lead_product_is_dropped_from_the_parts_rather_than_charged_twice(): void
+    {
+        // Der Server weist es ab; kaeme es trotzdem an, duerfte es nicht als
+        // zweites Stueck in der Spalte landen und den Preis verdoppeln.
+        $this->actingAs($this->user())
+            ->post('/cp/utilities/offers', $this->valid([
+                'products' => ['noten-paket'],
+            ]))
+            ->assertSessionHasErrors('products.0');
+    }
+
+    #[Test]
+    public function an_empty_parts_list_is_stored_as_nothing_rather_than_as_an_empty_list(): void
+    {
+        $this->actingAs($this->user())
+            ->post('/cp/utilities/offers', $this->valid(['products' => []]))
+            ->assertSessionHasNoErrors();
+
+        // `null`, nicht `[]`: die Abwesenheit einer Liste, nicht eine leere
+        // Aussage — und damit dasselbe, was in jeder Zeile von vor dieser
+        // Spalte steht.
+        $this->assertNull(Offer::sole()->getRawOriginal('products'));
+        $this->assertFalse(Offer::sole()->isBundle());
+    }
 }

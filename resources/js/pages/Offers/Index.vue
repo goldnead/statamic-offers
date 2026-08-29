@@ -35,7 +35,7 @@ const blank = () => ({
     name: '', handle: '', product: props.products[0]?.value ?? '',
     amount_cent: null, compare_at_cent: null, currency: null,
     headline: '', body: '', button_label: '', image: '',
-    slot: 'standalone', bumps: [], active: true,
+    slot: 'standalone', bumps: [], active: true, products: [],
 });
 
 /**
@@ -63,6 +63,33 @@ const slotHelp = computed(() => props.slots.find((s) => s.value === form.value.s
  * to save.
  */
 const availableBumps = computed(() => props.bumpOptions.filter((o) => o.value !== form.value.handle));
+
+/**
+ * Was ein Buendel ausser dem Leitprodukt noch enthalten darf.
+ *
+ * Das Leitprodukt selbst faellt heraus: es steht schon in `product`, und ein
+ * zweites Mal in der Liste hiesse, es zweimal zu verkaufen. Der Server weist
+ * es ebenfalls ab; das hier verhindert, dass man es ueberhaupt anklickt.
+ */
+const availableProducts = computed(() => props.products.filter((o) => o.value !== form.value.product));
+
+/**
+ * Wie `bumpsError`: Laravel meldet einen abgelehnten Eintrag als `products.0`,
+ * nicht als `products`, und ein Feld, das nur auf `products` schaut, zeigt
+ * nichts an, waehrend das Speichern gescheitert aussieht wie ein Erfolg.
+ */
+const productsError = computed(() => {
+    const key = Object.keys(errors.value).find((k) => k === 'products' || k.startsWith('products.'));
+
+    return key ? errors.value[key] : null;
+});
+
+/**
+ * Ein Buendel ohne eigenen Preis kostet die Summe seiner Teile. Hier steht nur
+ * der Hinweis darauf — gerechnet wird auf dem Server, weil eine Zahl, die der
+ * Browser ausrechnet, nie die ist, die abgebucht wird.
+ */
+const isBundle = computed(() => (form.value.products?.length ?? 0) > 0);
 
 /**
  * Laravel reports a rejected entry as `bumps.0`, not `bumps`, so a field bound
@@ -231,6 +258,9 @@ const statusColor = (row) => {
 
             <template #cell-product="{ row }">
                 <span class="font-mono text-xs">{{ row.product }}</span>
+                <span v-if="row.products_count" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t.bundle_of.replace(':count', row.products_count) }}
+                </span>
             </template>
 
             <template #prepended-row-actions="{ row }">
@@ -278,6 +308,24 @@ const statusColor = (row) => {
 
                 <Field :label="t.field_product" :instructions="t.field_product_help" :error="errors.product" required>
                     <Select v-model="form.product" :options="products" />
+                </Field>
+
+                <!-- Was ausser dem Leitprodukt noch mitverkauft wird. Leer
+                     heisst: ein Angebot ueber eine Sache, wie bisher. -->
+                <Field
+                    :label="t.field_products"
+                    :instructions="isBundle ? t.field_products_bundle : t.field_products_help"
+                    :error="productsError"
+                >
+                    <Combobox
+                        v-model="form.products"
+                        :options="availableProducts"
+                        :placeholder="t.field_products_placeholder"
+                        :disabled="availableProducts.length === 0"
+                        multiple
+                        searchable
+                        clearable
+                    />
                 </Field>
 
                 <div>

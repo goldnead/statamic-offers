@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.4.0
+
+### Neu: ein Angebot darf ein Bündel sein
+
+Bisher verkaufte ein Angebot genau ein Produkt. Ein Bündel — drei Dinge, ein Preis — ließ sich
+damit nirgends ausdrücken: Bumps sind Häkchen, die der Käufer einzeln entscheidet und die einzeln
+kosten, und ein eigenes Katalogprodukt dafür anzulegen heißt, den Preis wieder in eine Datei zu
+schreiben.
+
+Neues Feld **Enthält außerdem** am Angebot. Bleibt es leer, ändert sich nichts.
+
+- **Preis:** der eigene, sonst die **Summe der Teile**. Der alte Rückfall auf das Leitprodukt wäre
+  hier zum Fehler geworden: drei Dinge zum Preis von einem, still, bis es jemand nachrechnet.
+- **Freischaltung:** die Vereinigung dessen, was alle Teile gewähren, ohne Dopplungen.
+- **Rechnung:** eine Zeile, geführt unter dem Leitprodukt. An dessen Handle hängt die Steuerklasse,
+  und die braucht genau eine Antwort.
+
+**Ein Bündel, dessen Teile sich bei `digital` widersprechen, ist nicht verkaufbar.** Der Schlüssel
+beschreibt nicht das Medium, er entscheidet über den Leistungsort und damit über einen von vier
+Pflichthinweisen (§ 3a UStG). Eine Zeile, die zur Hälfte elektronisch erbracht ist, hat keinen
+richtigen — und einen zu wählen hieße, eine Steuerfrage auf einem Dokument zu raten, das sich nicht
+mehr korrigieren lässt. Der Katalog antwortet dann „gibt es nicht", und `Checkout::start()` bricht
+den ganzen Vorgang ab, bevor Geld fließt. Dasselbe, wenn ein Teil aus dem Katalog gefallen ist.
+
+**Bündel mit mehr als einer Freischaltung brauchen `statamic-payments` 1.14 oder neuer.** Davor
+nahm `grants` nur eine Zeichenkette; eine Liste fiel dort an `is_string()` heraus und vergab
+**gar nichts** statt des ersten Stücks. Ein solches Bündel verweigert deshalb die Auflösung und
+schreibt den Grund ins Log, statt sich verkaufen zu lassen und nichts zu liefern. Geprüft wird die
+installierte Klasse, nicht eine Zahl in einer Datei.
+
+Der aufgelöste Katalogeintrag trägt neben `product` (dem Leitprodukt) jetzt `products` mit allen
+Teilen — damit ein Geschwister, das die Auslieferung macht, nicht die Angebotstabelle selbst
+abfragen muss.
+
+Migration: `products` (json, nullable) an `offers`. Bestehende Zeilen bleiben, wie sie sind.
+
 ## 1.3.0
 
 ### Fixed — ein Angebot war nur ein Preis, und das riss die Familie auseinander
