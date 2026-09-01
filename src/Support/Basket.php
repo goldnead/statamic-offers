@@ -93,7 +93,7 @@ class Basket
     public function grossCent(): int
     {
         return array_sum(array_map(
-            fn (Offer $o) => (int) $o->amountCent(),
+            fn (Offer $o) => (int) $o->effectiveAmountCent(),
             [$this->offer, ...$this->bumps],
         ));
     }

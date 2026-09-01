@@ -2,6 +2,8 @@
 
 namespace Goldnead\StatamicOffers\Models;
 
+use Goldnead\StatamicOffers\Offers;
+use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +25,19 @@ use Illuminate\Support\Carbon;
  * @property string|null $button_label
  * @property string $confirmation_mode
  * @property string|null $confirmation_template
+ * @property int|null $withdrawal_days
+ * @property string|null $withdrawal_text
+ * @property string|null $withdrawal_waiver_text
+ * @property bool $withdrawal_checkbox_required
+ * @property string|null $withdrawal_b2b_text
+ * @property bool $withdrawal_pdf
+ * @property list<string>|null $checkout_fields
+ * @property Carbon|null $access_starts_at
+ * @property int|null $access_days
+ * @property int|null $discount_percent
+ * @property int|null $quantity_limit
+ * @property Carbon|null $available_from
+ * @property Carbon|null $available_until
  * @property list<string>|null $bumps
  * @property string $slot
  * @property bool $active
@@ -64,6 +79,16 @@ class Offer extends Model
             'meta' => 'array',
             'bumps' => 'array',
             'products' => 'array',
+            'withdrawal_days' => 'integer',
+            'withdrawal_checkbox_required' => 'boolean',
+            'withdrawal_pdf' => 'boolean',
+            'checkout_fields' => 'array',
+            'access_starts_at' => 'date',
+            'access_days' => 'integer',
+            'discount_percent' => 'integer',
+            'quantity_limit' => 'integer',
+            'available_from' => 'datetime',
+            'available_until' => 'datetime',
         ];
     }
 
@@ -168,10 +193,78 @@ class Offer extends Model
      */
     public function amountCent(): ?int
     {
+        // Kept as the name every caller knows; the arithmetic moved to
+        // `effectiveAmountCent()` when the percentage discount arrived, and
+        // this delegates so that nothing built on the old name ever charges
+        // the undiscounted price.
+        return $this->effectiveAmountCent();
+    }
+
+    /**
+     * What is charged, after a percentage discount.
+     *
+     * Own price first, always — it is the one number somebody typed on
+     * purpose. Otherwise the catalogue price, reduced by `discount_percent`
+     * when one is set and rounded to the cent the ordinary way. The form
+     * refuses an offer that has both, so the order here is never a tie-break
+     * in practice; it is written down so that a row imported around the form
+     * still charges one unambiguous number.
+     */
+    public function effectiveAmountCent(): ?int
+    {
         if ($this->amount_cent !== null) {
             return $this->amount_cent;
         }
 
+        $base = $this->basePriceCent();
+
+        if ($base === null) {
+            return null;
+        }
+
+        $percent = $this->discountPercent();
+
+        if ($percent === null) {
+            return $base;
+        }
+
+        return (int) round($base * (100 - $percent) / 100);
+    }
+
+    /**
+     * What the buyer is told they would otherwise pay.
+     *
+     * A hand-set `compare_at_cent` wins. Without one, a percentage discount
+     * makes the catalogue price the struck-through one — that is the whole
+     * point of the percentage: the "instead of" number can no longer go stale.
+     * Display only, never charged, same as it always was.
+     */
+    public function effectiveCompareAtCent(): ?int
+    {
+        if ($this->compare_at_cent !== null) {
+            return $this->compare_at_cent;
+        }
+
+        if ($this->amount_cent === null && $this->discountPercent() !== null) {
+            return $this->basePriceCent();
+        }
+
+        return null;
+    }
+
+    /** The percentage, or null when the column holds nothing usable. */
+    protected function discountPercent(): ?int
+    {
+        $percent = $this->discount_percent;
+
+        return is_int($percent) && $percent >= 1 && $percent <= 99 ? $percent : null;
+    }
+
+    /**
+     * The catalogue's price for what this offer sells, before any discount.
+     */
+    protected function basePriceCent(): ?int
+    {
         // Ohne eigenen Preis gilt der Katalog — und bei einem Buendel die Summe
         // seiner Teile, nicht der Preis des ersten.
         //
@@ -255,7 +348,7 @@ class Offer extends Model
      */
     public function isSellable(): bool
     {
-        if (! $this->active || $this->amountCent() === null) {
+        if (! $this->active || $this->effectiveAmountCent() === null) {
             return false;
         }
 
@@ -265,7 +358,169 @@ class Offer extends Model
             }
         }
 
+        // Time and quantity last, because they are the two that change on
+        // their own: an offer that was sellable this morning stops being so at
+        // midnight or on the hundredth sale, with nobody touching the row.
+        if (! $this->isWithinWindow()) {
+            return false;
+        }
+
+        $remaining = $this->remainingQuantity();
+
+        return $remaining === null || $remaining > 0;
+    }
+
+    /**
+     * Whether now lies between `available_from` and `available_until`.
+     *
+     * Both ends inclusive of the moment itself; both optional. An offer with
+     * neither is always inside its window.
+     */
+    public function isWithinWindow(): bool
+    {
+        $now = Carbon::now();
+
+        if ($this->available_from !== null && $now->lt($this->available_from)) {
+            return false;
+        }
+
+        if ($this->available_until !== null && $now->gt($this->available_until)) {
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * How many may still be sold, or null when there is no limit.
+     *
+     * Paid units, subtracted from the limit — read from the payment tables
+     * every time, because this is the number a checkout is refused on and a
+     * cached one is the number two people can both be shown. Never below
+     * zero: a limit lowered under what was already sold reads as "sold out",
+     * not as a debt.
+     *
+     * With the payment tables missing there is nothing to count against, and
+     * the honest answer is "no limit can be enforced" — returned as null, with
+     * the log line `OfferSales` writes once per request.
+     */
+    public function remainingQuantity(): ?int
+    {
+        if ($this->quantity_limit === null) {
+            return null;
+        }
+
+        $sold = OfferSales::sold($this);
+
+        if ($sold === null) {
+            return null;
+        }
+
+        return max(0, $this->quantity_limit - $sold);
+    }
+
+    /**
+     * When access begins and how long it lasts, or null for "now and for good".
+     *
+     * Handed to the payment as `meta['access']` by whoever starts the checkout;
+     * the entitlements bridge on the other side turns it into `starts_at` and
+     * `expires_at`. This addon writes no entitlement itself.
+     *
+     * @return array{starts_at: string|null, days: int|null}|null
+     */
+    public function accessWindow(): ?array
+    {
+        $startsAt = $this->access_starts_at?->format('Y-m-d');
+        $days = is_int($this->access_days) && $this->access_days > 0 ? $this->access_days : null;
+
+        if ($startsAt === null && $days === null) {
+            return null;
+        }
+
+        return ['starts_at' => $startsAt, 'days' => $days];
+    }
+
+    /**
+     * Which fields the checkout asks for, as keys into the library.
+     *
+     * Only keys the library knows: a key removed from the config after the
+     * offer was saved would otherwise ask the buyer for a field nothing can
+     * validate. An empty list and null both mean "the offer has no opinion".
+     *
+     * @return list<string>
+     */
+    public function checkoutFields(): array
+    {
+        $known = Offers::fieldKeys();
+        $picked = array_values(array_filter((array) ($this->checkout_fields ?? []), 'is_string'));
+
+        return array_values(array_intersect($picked, $known));
+    }
+
+    /**
+     * The terms of withdrawal that apply to this offer, right now.
+     *
+     * Offer over config over built-in default, key by key, so an offer may set
+     * a longer period and still inherit the site's wording. Placeholders are
+     * filled from `config('statamic-offers.seller')`, falling back to the
+     * application name and the mail sender.
+     *
+     * **`version` is the contract with the payment.** It is a hash over the
+     * three things a buyer actually agrees to — period, text, waiver — and
+     * changes whenever any of them does. The checkout freezes `waiver_text`
+     * plus this version on the payment as `consent_text`, and the whole array
+     * as `meta['withdrawal']`; that is the funnel's job, and it is what makes
+     * "which wording did this buyer see" answerable a year later. This method
+     * only says what the terms are *today*.
+     *
+     * @return array{days: int, text: string, waiver_text: string, checkbox_required: bool, b2b_text: string|null, version: string}
+     */
+    public function withdrawalTerms(): array
+    {
+        $config = (array) config('statamic-offers.withdrawal', []);
+
+        $days = $this->withdrawal_days ?? (int) ($config['days'] ?? 14);
+        $text = self::firstText($this->withdrawal_text, $config['text'] ?? null) ?? '';
+        $waiver = self::firstText($this->withdrawal_waiver_text, $config['waiver_text'] ?? null) ?? '';
+        $b2b = self::firstText($this->withdrawal_b2b_text, $config['b2b_text'] ?? null);
+
+        // The column defaults to true and has no null state of its own, so
+        // the config's say only matters for a row built in memory.
+        $checkbox = array_key_exists('withdrawal_checkbox_required', $this->attributes)
+            ? (bool) $this->withdrawal_checkbox_required
+            : (bool) ($config['checkbox_required'] ?? true);
+
+        $seller = (array) config('statamic-offers.seller', []);
+        $replacements = [
+            '{days}' => (string) $days,
+            '{seller_name}' => (string) (($seller['name'] ?? null) ?: config('app.name', '')),
+            '{seller_contact}' => (string) (($seller['contact'] ?? null) ?: config('mail.from.address', '')),
+        ];
+
+        $text = strtr($text, $replacements);
+        $waiver = strtr($waiver, $replacements);
+        $b2b = $b2b === null ? null : strtr($b2b, $replacements);
+
+        return [
+            'days' => $days,
+            'text' => $text,
+            'waiver_text' => $waiver,
+            'checkbox_required' => $checkbox,
+            'b2b_text' => $b2b,
+            'version' => substr(sha1($days.'|'.$text.'|'.$waiver), 0, 12),
+        ];
+    }
+
+    /** The first of the two that says something, or null. */
+    protected static function firstText(mixed ...$candidates): ?string
+    {
+        foreach ($candidates as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /** The price as a decimal string, for display. */
@@ -285,9 +540,9 @@ class Offer extends Model
 
     public function compareAt(): ?string
     {
-        return $this->compare_at_cent === null
-            ? null
-            : number_format($this->compare_at_cent / 100, 2, '.', '');
+        $cent = $this->effectiveCompareAtCent();
+
+        return $cent === null ? null : number_format($cent / 100, 2, '.', '');
     }
 
     /**
@@ -304,7 +559,7 @@ class Offer extends Model
 
     public function compareAtLocal(): ?string
     {
-        return self::localise($this->compare_at_cent);
+        return self::localise($this->effectiveCompareAtCent());
     }
 
     /** Without ext-intl there is no locale knowledge, so the dot stays. */

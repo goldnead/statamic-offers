@@ -84,10 +84,21 @@ class Offers extends Tags
             'button_label' => $offer->button_label,
             'product' => $offer->product,
             'amount' => $offer->amount(),
-            'amount_cent' => $offer->amountCent(),
+            'amount_cent' => $offer->effectiveAmountCent(),
+            // The struck-through price: hand-set, or the catalogue price when
+            // the offer is a percentage off it.
             'compare_at' => $offer->compareAt(),
+            'compare_at_cent' => $offer->effectiveCompareAtCent(),
+            'discount_percent' => $offer->discount_percent,
             'currency' => $offer->currency(),
             'slot' => $offer->slot,
+            // Scarcity, for a template that wants to say so. Null means no
+            // limit and no deadline — print nothing rather than "0 left".
+            'remaining_quantity' => $offer->remainingQuantity(),
+            'available_until' => $offer->available_until?->toIso8601String(),
+            // For the checkout: which fields to ask, and the terms to show.
+            'checkout_fields' => $offer->checkoutFields(),
+            'withdrawal' => $offer->withdrawalTerms(),
         ];
     }
 }

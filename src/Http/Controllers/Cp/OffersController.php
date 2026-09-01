@@ -4,14 +4,19 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 
 use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator as ValidatorInstance;
 use Inertia\Inertia;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
+use Statamic\Facades\Scope;
 use Statamic\Http\Controllers\CP\CpController;
 use Statamic\Http\Requests\FilteredRequest;
 use Statamic\Query\Scopes\Filters\Concerns\QueriesFilters;
@@ -68,6 +73,21 @@ class OffersController extends CpController
             // uses that emptiness to hide the "own mail" choice altogether
             // rather than offering a picker with nothing in it.
             'confirmationTemplates' => $this->confirmationTemplates(),
+            // The slot filter, which is what turns this listing into an
+            // upsell overview without a second screen.
+            'filters' => Scope::filters(self::SCOPE, ['scope' => self::SCOPE]),
+            // The checkout field library, for the multi-select. Keys and
+            // labels only; the form never decides what a field *is*.
+            'checkoutFields' => collect(Offers::fieldLibrary())->map(fn (array $field) => [
+                'value' => $field['key'],
+                'label' => $field['label'],
+            ])->values()->all(),
+            // What an offer inherits when its own withdrawal fields are empty,
+            // shown as placeholders so that "empty" is visibly "this".
+            'withdrawalDefaults' => (new Offer)->withdrawalTerms(),
+            // Named on the screen next to every date-time field: a deadline
+            // typed without knowing which clock it runs on is off by hours.
+            'timezone' => (string) config('app.timezone', 'UTC'),
             // Every label on the screen, translated here rather than in the
             // template. See the coupons screen for the reasoning; the two are
             // built the same way on purpose.
@@ -109,7 +129,7 @@ class OffersController extends CpController
      */
     protected function validated(Request $request, ?Offer $offer = null): array
     {
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:191'],
             'handle' => [
                 'required', 'string', 'max:191', 'regex:/^[a-z0-9][a-z0-9_-]*$/',
@@ -140,7 +160,39 @@ class OffersController extends CpController
             // means nobody can post "12,00" and have it read as 12 cents.
             'amount_cent' => ['nullable', 'integer', 'min:1'],
             'compare_at_cent' => ['nullable', 'integer', 'min:1'],
+            // A percentage off the catalogue price. 1 to 99: 0 is no discount
+            // and 100 is a gift, and both are better said in words than typed
+            // into a field labelled "discount". "Not together with an own
+            // price" is checked below, where it can name both fields.
+            'discount_percent' => ['nullable', 'integer', 'min:1', 'max:99'],
             'currency' => ['nullable', 'string', 'size:3'],
+            // Scarcity. The limit is compared against paid lines, never
+            // against a counter, so lowering it under what was sold simply
+            // reads as sold out.
+            'quantity_limit' => ['nullable', 'integer', 'min:1'],
+            'available_from' => ['nullable', 'date'],
+            // `after:available_from` only while that field holds a date; see
+            // the coupons screen for why the rule is conditional.
+            'available_until' => array_filter([
+                'nullable', 'date', $request->filled('available_from') ? 'after:available_from' : null,
+            ]),
+            // Access: a day and a number of days, handed on to the payment.
+            'access_starts_at' => ['nullable', 'date'],
+            'access_days' => ['nullable', 'integer', 'min:1', 'max:65535'],
+            // Only keys the library knows. An unknown key is not "a field the
+            // site forgot to configure", it is a field nothing can validate at
+            // the checkout, so it is refused here, in front of the person who
+            // can fix it.
+            'checkout_fields' => ['nullable', 'array'],
+            'checkout_fields.*' => ['string', Rule::in(Offers::fieldKeys())],
+            // Withdrawal. Every field empty means "the config's default", so
+            // nothing here is required; what is typed is bounded.
+            'withdrawal_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'withdrawal_text' => ['nullable', 'string', 'max:20000'],
+            'withdrawal_waiver_text' => ['nullable', 'string', 'max:2000'],
+            'withdrawal_checkbox_required' => ['nullable', 'boolean'],
+            'withdrawal_b2b_text' => ['nullable', 'string', 'max:20000'],
+            'withdrawal_pdf' => ['nullable', 'boolean'],
             'headline' => ['nullable', 'string', 'max:191'],
             'body' => ['nullable', 'string', 'max:5000'],
             'button_label' => ['nullable', 'string', 'max:191'],
@@ -192,13 +244,52 @@ class OffersController extends CpController
             'products.*.not_in' => __('statamic-offers::messages.field_products_invalid'),
             'bumps.*.exists' => __('statamic-offers::messages.field_bumps_invalid'),
             'bumps.*.not_in' => __('statamic-offers::messages.field_bumps_invalid'),
+            'checkout_fields.*.in' => __('statamic-offers::messages.field_checkout_fields_invalid'),
         ]);
+
+        $validator->after(function (ValidatorInstance $validator) use ($request) {
+            $this->checkPriceOrPercent($validator, $request);
+        });
+
+        $data = $validator->validate();
 
         // `validate()` omits a nullable key that was never sent, so reading it
         // directly is a 500 on every client that leaves the field out — which
         // is every client that is not this addon's own form.
         $data['active'] = $request->boolean('active');
         $data['currency'] = ($data['currency'] ?? null) ? strtoupper($data['currency']) : null;
+
+        // The nullable columns this release added, spelled out as null when
+        // absent, so a client that posts a partial form clears what it does
+        // not send rather than tripping over a missing key.
+        foreach (['discount_percent', 'quantity_limit', 'access_days', 'withdrawal_days'] as $key) {
+            $data[$key] = isset($data[$key]) && $data[$key] !== '' ? (int) $data[$key] : null;
+        }
+
+        foreach (['withdrawal_text', 'withdrawal_waiver_text', 'withdrawal_b2b_text'] as $key) {
+            $data[$key] = trim((string) ($data[$key] ?? '')) ?: null;
+        }
+
+        // Both flags have a default in the column, and an omitted field must
+        // land on that default rather than on `false`: a client that never
+        // heard of the checkbox has not decided the checkout may skip it.
+        $data['withdrawal_checkbox_required'] = $request->has('withdrawal_checkbox_required')
+            ? $request->boolean('withdrawal_checkbox_required')
+            : true;
+        $data['withdrawal_pdf'] = $request->boolean('withdrawal_pdf');
+
+        // In the application's timezone, which is the one the screen names
+        // next to the field. Stored as-is, not moved to a day boundary: a
+        // launch at 18:00 is a launch at 18:00.
+        $data['available_from'] = ($data['available_from'] ?? null) ? Carbon::parse($data['available_from']) : null;
+        $data['available_until'] = ($data['available_until'] ?? null) ? Carbon::parse($data['available_until']) : null;
+        $data['access_starts_at'] = ($data['access_starts_at'] ?? null) ? Carbon::parse($data['access_starts_at'])->startOfDay() : null;
+
+        // Known keys only, deduplicated, in the library's order rather than
+        // the form's — the checkout renders them in that order, and a form
+        // that posts them shuffled must not shuffle the checkout.
+        $picked = array_values(array_unique(array_filter((array) ($data['checkout_fields'] ?? []), 'is_string')));
+        $data['checkout_fields'] = $picked === [] ? null : array_values(array_intersect(Offers::fieldKeys(), $picked));
 
         // Same reasoning as `active`: a client that omits the field is not
         // saying "send nothing", it is saying nothing. The standard mail is
@@ -240,6 +331,28 @@ class OffersController extends CpController
         }
 
         return $data;
+    }
+
+    /**
+     * An own price or a percentage, never both.
+     *
+     * Two answers to "what does this cost" is not a configuration, it is a
+     * disagreement, and the model would have to pick a winner silently. The
+     * error goes on both fields because the person reading it is looking at
+     * the pair.
+     */
+    protected function checkPriceOrPercent(ValidatorInstance $validator, Request $request): void
+    {
+        $amount = $request->input('amount_cent');
+        $percent = $request->input('discount_percent');
+
+        $hasAmount = $amount !== null && $amount !== '';
+        $hasPercent = $percent !== null && $percent !== '';
+
+        if ($hasAmount && $hasPercent) {
+            $validator->errors()->add('amount_cent', __('statamic-offers::messages.field_price_or_percent'));
+            $validator->errors()->add('discount_percent', __('statamic-offers::messages.field_price_or_percent'));
+        }
     }
 
     protected function json(FilteredRequest $request)
@@ -299,6 +412,7 @@ class OffersController extends CpController
             'active' => 'active',
             'confirmation' => 'confirmation_mode',
             'product' => 'product',
+            'availability' => 'available_until',
         ];
 
         $requested = (string) $request->get('sort', 'name');
@@ -419,6 +533,43 @@ class OffersController extends CpController
             'field_amount_help' => __('statamic-offers::messages.field_amount_help'),
             'field_compare_at' => __('statamic-offers::messages.field_compare_at'),
             'field_compare_at_help' => __('statamic-offers::messages.field_compare_at_help'),
+            'field_discount_percent' => __('statamic-offers::messages.field_discount_percent'),
+            'field_discount_percent_help' => __('statamic-offers::messages.field_discount_percent_help'),
+            'section_price' => __('statamic-offers::messages.section_price'),
+            'section_availability' => __('statamic-offers::messages.section_availability'),
+            'section_access' => __('statamic-offers::messages.section_access'),
+            'section_checkout' => __('statamic-offers::messages.section_checkout'),
+            'section_withdrawal' => __('statamic-offers::messages.section_withdrawal'),
+            'section_mail' => __('statamic-offers::messages.section_mail'),
+            'field_quantity_limit' => __('statamic-offers::messages.field_quantity_limit'),
+            'field_quantity_limit_help' => __('statamic-offers::messages.field_quantity_limit_help'),
+            'field_available_from' => __('statamic-offers::messages.field_available_from'),
+            'field_available_until' => __('statamic-offers::messages.field_available_until'),
+            'field_available_help' => __('statamic-offers::messages.field_available_help'),
+            'timezone_note' => __('statamic-offers::messages.timezone_note'),
+            'field_access_starts_at' => __('statamic-offers::messages.field_access_starts_at'),
+            'field_access_days' => __('statamic-offers::messages.field_access_days'),
+            'field_access_help' => __('statamic-offers::messages.field_access_help'),
+            'field_checkout_fields' => __('statamic-offers::messages.field_checkout_fields'),
+            'field_checkout_fields_help' => __('statamic-offers::messages.field_checkout_fields_help'),
+            'field_checkout_fields_empty' => __('statamic-offers::messages.field_checkout_fields_empty'),
+            'field_withdrawal_days' => __('statamic-offers::messages.field_withdrawal_days'),
+            'field_withdrawal_text' => __('statamic-offers::messages.field_withdrawal_text'),
+            'field_withdrawal_waiver_text' => __('statamic-offers::messages.field_withdrawal_waiver_text'),
+            'field_withdrawal_checkbox_required' => __('statamic-offers::messages.field_withdrawal_checkbox_required'),
+            'field_withdrawal_b2b_text' => __('statamic-offers::messages.field_withdrawal_b2b_text'),
+            'field_withdrawal_pdf' => __('statamic-offers::messages.field_withdrawal_pdf'),
+            'field_withdrawal_pdf_help' => __('statamic-offers::messages.field_withdrawal_pdf_help'),
+            'withdrawal_help' => __('statamic-offers::messages.withdrawal_help'),
+            'withdrawal_version' => __('statamic-offers::messages.withdrawal_version'),
+            'withdrawal_version_help' => __('statamic-offers::messages.withdrawal_version_help'),
+            'availability_unlimited' => __('statamic-offers::messages.availability_unlimited'),
+            'availability_sold_out' => __('statamic-offers::messages.availability_sold_out'),
+            'availability_not_yet' => __('statamic-offers::messages.availability_not_yet'),
+            'availability_ended' => __('statamic-offers::messages.availability_ended'),
+            'availability_remaining' => __('statamic-offers::messages.availability_remaining'),
+            'availability_until' => __('statamic-offers::messages.availability_until'),
+            'sold_count' => __('statamic-offers::messages.sold_count'),
             'field_slot' => __('statamic-offers::messages.field_slot'),
             'field_bumps' => __('statamic-offers::messages.field_bumps'),
             'field_bumps_help' => __('statamic-offers::messages.field_bumps_help'),

@@ -5,6 +5,7 @@ import {
     Header, Badge, Listing, EmptyStateMenu, EmptyStateItem, DocsCallout,
     Button, CommandPaletteItem, Stack, Heading, ConfirmationModal,
     Field, Input, Textarea, Select, Combobox, Switch, DropdownItem, Alert,
+    Subheading, Checkbox, CheckboxGroup,
 } from '@statamic/cms/ui';
 
 /**
@@ -30,18 +31,57 @@ const props = defineProps({
     bumpOptions: { type: Array, default: () => [] },
     confirmationModes: { type: Array, default: () => [] },
     confirmationTemplates: { type: Array, default: () => [] },
+    filters: { type: Array, default: () => [] },
+    checkoutFields: { type: Array, default: () => [] },
+    withdrawalDefaults: { type: Object, default: () => ({}) },
+    timezone: { type: String, default: 'UTC' },
     t: { type: Object, required: true },
 });
 
 const blank = () => ({
     name: '', handle: '', product: props.products[0]?.value ?? '',
-    amount_cent: null, compare_at_cent: null, currency: null,
+    amount_cent: null, compare_at_cent: null, discount_percent: null, currency: null,
     headline: '', body: '', button_label: '', image: '',
     slot: 'standalone', bumps: [], active: true, products: [],
     // The standard mail, so that an offer created and saved without ever
     // opening this field still reaches its buyer.
     confirmation_mode: 'default', confirmation_template: null,
+    // Scarcity and access: empty is "unlimited, now, for good".
+    quantity_limit: null, available_from: null, available_until: null,
+    access_starts_at: null, access_days: null,
+    // Checkout fields: nothing ticked means the funnel step decides.
+    checkout_fields: [],
+    // Withdrawal: every empty field inherits the config's default, which the
+    // form shows as a placeholder so that "empty" is visibly "this".
+    withdrawal_days: null, withdrawal_text: '', withdrawal_waiver_text: '',
+    withdrawal_checkbox_required: true, withdrawal_b2b_text: '', withdrawal_pdf: false,
 });
+
+const timezoneNote = computed(() => props.t.timezone_note.replace(':timezone', props.timezone));
+
+/**
+ * Laravel reports a rejected key as `checkout_fields.0`; see `bumpsError`.
+ */
+const checkoutFieldsError = computed(() => {
+    const key = Object.keys(errors.value).find((k) => k === 'checkout_fields' || k.startsWith('checkout_fields.'));
+
+    return key ? errors.value[key] : null;
+});
+
+/** An own price and a percentage are one decision, so filling one clears the other. */
+function amountChanged(value) {
+    form.value.amount_cent = value;
+    if (value !== null && value !== '') form.value.discount_percent = null;
+}
+
+function percentChanged(value) {
+    form.value.discount_percent = value;
+    if (value !== null && value !== '') form.value.amount_cent = null;
+}
+
+const availabilityColor = (row) => ({
+    sold_out: 'red', ended: 'red', not_yet: 'amber', limited: 'default', unlimited: 'gray',
+}[row.availability?.state] ?? 'gray');
 
 /**
  * The listing fetches its own rows over axios; an Inertia redirect updates the
@@ -255,6 +295,7 @@ const statusColor = (row) => {
             v-else
             ref="listing"
             :url="listingUrl"
+            :filters="filters"
             :sort-column="sortColumn"
             :sort-direction="sortDirection"
             preferences-prefix="statamic-offers.offers"
@@ -274,9 +315,24 @@ const statusColor = (row) => {
             <template #cell-amount="{ row }">
                 <span v-if="row.amount" class="tabular-nums">{{ row.amount }} {{ row.currency }}</span>
                 <span v-else class="text-gray-500 dark:text-gray-400">{{ t.no_price }}</span>
-                <span v-if="row.compare_at" class="block text-2xs text-gray-500 dark:text-gray-400 line-through tabular-nums">
-                    {{ row.compare_at }} {{ row.currency }}
+                <span v-if="row.compare_at" class="block text-2xs text-gray-500 dark:text-gray-400 tabular-nums">
+                    <span class="line-through whitespace-nowrap">{{ row.compare_at }} {{ row.currency }}</span>
+                    <span v-if="row.discount_percent" class="whitespace-nowrap"> · −{{ row.discount_percent }} %</span>
                 </span>
+            </template>
+
+            <!-- Paid revenue, and how many. The column only exists when the
+                 payment tables do, so an empty cell here means "nothing sold"
+                 and never "nothing to read from". -->
+            <template #cell-revenue="{ row }">
+                <span class="tabular-nums">{{ row.revenue }} {{ row.currency }}</span>
+                <span v-if="row.sold" class="block text-2xs text-gray-500 dark:text-gray-400 tabular-nums">
+                    {{ t.sold_count.replace(':count', row.sold) }}
+                </span>
+            </template>
+
+            <template #cell-availability="{ row }">
+                <Badge :color="availabilityColor(row)" :text="row.availability.label" />
             </template>
 
             <template #cell-slot="{ row }">
@@ -376,10 +432,18 @@ const statusColor = (row) => {
                     />
                 </Field>
 
+                <Subheading :text="t.section_price" />
+
                 <div>
                     <div class="grid grid-cols-2 gap-4">
                         <Field :label="t.field_amount" :error="errors.amount_cent">
-                            <Input v-model.number="form.amount_cent" type="number" min="1" :append="currency" />
+                            <Input
+                                :model-value="form.amount_cent"
+                                type="number"
+                                min="1"
+                                :append="currency"
+                                @update:model-value="amountChanged($event === '' ? null : Number($event))"
+                            />
                         </Field>
 
                         <Field :label="t.field_compare_at" :error="errors.compare_at_cent">
@@ -395,6 +459,19 @@ const statusColor = (row) => {
                         {{ t.field_compare_at_help }}
                     </p>
                 </div>
+
+                <!-- The other way to a price: a share off the catalogue. One
+                     or the other, and the server refuses both. -->
+                <Field :label="t.field_discount_percent" :instructions="t.field_discount_percent_help" :error="errors.discount_percent">
+                    <Input
+                        :model-value="form.discount_percent"
+                        type="number"
+                        min="1"
+                        max="99"
+                        append="%"
+                        @update:model-value="percentChanged($event === '' ? null : Number($event))"
+                    />
+                </Field>
 
                 <Field :label="t.field_slot" :instructions="slotHelp" :error="errors.slot" required>
                     <Select v-model="form.slot" :options="slots" />
@@ -435,6 +512,112 @@ const statusColor = (row) => {
                     <Input v-model="form.image" />
                 </Field>
 
+                <!-- Scarcity. On the offer and not on the funnel step: the
+                     same offer through two funnels is one limit, not two. -->
+                <Subheading :text="t.section_availability" />
+
+                <Field :label="t.field_quantity_limit" :instructions="t.field_quantity_limit_help" :error="errors.quantity_limit">
+                    <Input v-model.number="form.quantity_limit" type="number" min="1" :placeholder="t.availability_unlimited" />
+                </Field>
+
+                <!-- Plain date-time inputs; see the coupons screen for why not
+                     core's DatePicker. -->
+                <div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_available_from" :error="errors.available_from">
+                            <Input v-model="form.available_from" type="datetime-local" />
+                        </Field>
+
+                        <Field :label="t.field_available_until" :error="errors.available_until">
+                            <Input v-model="form.available_until" type="datetime-local" />
+                        </Field>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t.field_available_help }} {{ timezoneNote }}
+                    </p>
+                </div>
+
+                <!-- Access. Handed to the payment; the entitlements addon
+                     turns it into starts_at / expires_at. -->
+                <Subheading :text="t.section_access" />
+
+                <div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_access_starts_at" :error="errors.access_starts_at">
+                            <Input v-model="form.access_starts_at" type="date" />
+                        </Field>
+
+                        <Field :label="t.field_access_days" :error="errors.access_days">
+                            <Input v-model.number="form.access_days" type="number" min="1" />
+                        </Field>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_access_help }}</p>
+                </div>
+
+                <!-- Checkout fields: picks from the library in the config.
+                     The library says what a field is; the offer only says
+                     "ask for it". -->
+                <Subheading :text="t.section_checkout" />
+
+                <Field
+                    :label="t.field_checkout_fields"
+                    :instructions="checkoutFields.length ? t.field_checkout_fields_help : t.field_checkout_fields_empty"
+                    :error="checkoutFieldsError"
+                >
+                    <CheckboxGroup v-if="checkoutFields.length" v-model="form.checkout_fields">
+                        <Checkbox
+                            v-for="option in checkoutFields"
+                            :key="option.value"
+                            :value="option.value"
+                            :label="option.label"
+                        />
+                    </CheckboxGroup>
+                </Field>
+
+                <!-- Withdrawal. Every empty field inherits the config, shown
+                     as the placeholder. What a buyer agrees to is frozen on
+                     the payment together with the version below, so a text
+                     edited later never rewrites an earlier consent. -->
+                <Subheading :text="t.section_withdrawal" />
+
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ t.withdrawal_help }}</p>
+
+                <Field :label="t.field_withdrawal_days" :error="errors.withdrawal_days">
+                    <Input
+                        v-model.number="form.withdrawal_days"
+                        type="number"
+                        min="0"
+                        max="365"
+                        :placeholder="String(withdrawalDefaults.days ?? '')"
+                    />
+                </Field>
+
+                <Field :label="t.field_withdrawal_text" :error="errors.withdrawal_text">
+                    <Textarea v-model="form.withdrawal_text" :rows="6" :placeholder="withdrawalDefaults.text" />
+                </Field>
+
+                <Field :label="t.field_withdrawal_waiver_text" :error="errors.withdrawal_waiver_text">
+                    <Textarea v-model="form.withdrawal_waiver_text" :rows="3" :placeholder="withdrawalDefaults.waiver_text" />
+                </Field>
+
+                <Field :label="t.field_withdrawal_checkbox_required" :error="errors.withdrawal_checkbox_required">
+                    <Switch v-model="form.withdrawal_checkbox_required" />
+                </Field>
+
+                <Field :label="t.field_withdrawal_b2b_text" :error="errors.withdrawal_b2b_text">
+                    <Textarea v-model="form.withdrawal_b2b_text" :rows="3" :placeholder="withdrawalDefaults.b2b_text || ''" />
+                </Field>
+
+                <Field :label="t.field_withdrawal_pdf" :instructions="t.field_withdrawal_pdf_help" :error="errors.withdrawal_pdf">
+                    <Switch v-model="form.withdrawal_pdf" />
+                </Field>
+
+                <Field v-if="editing" :label="t.withdrawal_version" :instructions="t.withdrawal_version_help">
+                    <span class="font-mono text-xs">{{ editing.withdrawal_version }}</span>
+                </Field>
+
                 <!--
                     Was an diesem Angebot haengt. Auch — und gerade — wenn
                     nichts daran haengt: ein fehlendes Kaestchen liest sich wie
@@ -462,6 +645,8 @@ const statusColor = (row) => {
                         </template>
                     </div>
                 </Field>
+
+                <Subheading :text="t.section_mail" />
 
                 <Field
                     :label="t.field_confirmation"

@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers\Http\Resources\Cp;
 
+use Goldnead\StatamicOffers\Support\OfferSales;
 use Illuminate\Http\Resources\Json\ResourceCollection;
 use Statamic\CP\Column;
 use Statamic\CP\Columns;
@@ -39,13 +40,20 @@ class OffersCollection extends ResourceCollection
             Column::make('slot')->label(__('statamic-offers::messages.column_slot'))->sortable(true)->defaultOrder(4),
             Column::make('bumps')->label(__('statamic-offers::messages.column_bumps'))->sortable(false)->numeric(true)->defaultOrder(5),
             Column::make('performance')->label(__('statamic-offers::messages.column_performance'))->sortable(false)->defaultOrder(6),
-            Column::make('active')->label(__('statamic-offers::messages.column_active'))->sortable(true)->defaultOrder(7),
+            // Paid revenue per offer. Only when the payment tables exist:
+            // a column of dashes would say "nothing sold" where the truth is
+            // "nothing to read from".
+            ...(OfferSales::available()
+                ? [Column::make('revenue')->label(__('statamic-offers::messages.column_revenue'))->sortable(false)->numeric(true)->defaultOrder(7)]
+                : []),
+            Column::make('availability')->label(__('statamic-offers::messages.column_availability'))->sortable(true)->defaultOrder(8),
+            Column::make('active')->label(__('statamic-offers::messages.column_active'))->sortable(true)->defaultOrder(9),
             // Visible by default, and that is the point of it. An offer that
             // sends the buyer nothing is not a setting anybody should have to
             // open a form to discover — that discovery is what took a month
             // the last time.
-            Column::make('confirmation')->label(__('statamic-offers::messages.column_confirmation'))->sortable(true)->defaultOrder(8),
-            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(9)->defaultVisibility(false)->visible(false),
+            Column::make('confirmation')->label(__('statamic-offers::messages.column_confirmation'))->sortable(true)->defaultOrder(10),
+            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(11)->defaultVisibility(false)->visible(false),
         ]);
 
         if ($key = $this->columnPreferenceKey) {

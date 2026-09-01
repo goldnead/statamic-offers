@@ -138,4 +138,83 @@ return [
     'coupon_deactivated' => 'Coupon deactivated.|:count coupons deactivated.',
     'yes' => 'Yes',
     'no' => 'No',
+
+    // Form sections
+    'section_price' => 'Price',
+    'section_availability' => 'Availability',
+    'section_access' => 'Access',
+    'section_checkout' => 'Checkout',
+    'section_withdrawal' => 'Withdrawal',
+    'section_mail' => 'Confirmation',
+
+    // K·6 percentage discount
+    'field_discount_percent' => 'Discount in percent',
+    'field_discount_percent_help' => '1 to 99. The price is then the catalogue price minus this share, the compare-at price the catalogue price. Either this or an own price.',
+    'field_price_or_percent' => 'Either an own price or a percentage discount, not both.',
+
+    // K·7 quantity and time limit
+    'column_availability' => 'Available',
+    'field_quantity_limit' => 'Quantity',
+    'field_quantity_limit_help' => 'How many times this offer is sold at most. Paid purchases count. Empty means no limit.',
+    'field_available_from' => 'On sale from',
+    'field_available_until' => 'On sale until',
+    'field_available_help' => 'Outside this window the offer cannot be sold, whichever funnel it is in. Both may be left empty.',
+    'timezone_note' => 'Times in :timezone.',
+    'availability_unlimited' => 'Unlimited',
+    'availability_sold_out' => 'Sold out',
+    'availability_not_yet' => 'From :date',
+    'availability_ended' => 'Ended :date',
+    'availability_remaining' => ':count of :limit left',
+    'availability_until' => 'until :date',
+    'sold_count' => ':count sold',
+
+    // K·5 access
+    'field_access_starts_at' => 'Access from',
+    'field_access_days' => 'Access for days',
+    'field_access_help' => 'Empty means immediately and for good. The entitlements themselves are written by statamic-entitlements; this is only what the purchase hands over.',
+
+    // S·6 checkout fields
+    'field_checkout_fields' => 'Fields at checkout',
+    'field_checkout_fields_help' => 'The checkout asks for these before payment; a postal address is mandatory above 250 € (§ 14 UStG). Nothing ticked means the funnel step decides.',
+    'field_checkout_fields_empty' => 'The library in the configuration is empty.',
+    'field_checkout_fields_invalid' => 'Every field must be in the configuration\'s library.',
+    'checkout_field_name' => 'Name',
+    'checkout_field_street' => 'Street and number',
+    'checkout_field_postal_code' => 'Postal code',
+    'checkout_field_city' => 'City',
+    'checkout_field_country' => 'Country (two letters, e.g. DE)',
+    'checkout_field_phone' => 'Phone',
+    'checkout_field_company' => 'Company',
+    'checkout_field_vat_id' => 'VAT ID',
+
+    // P·3 withdrawal
+    'withdrawal_help' => 'Empty means the default from the configuration, shown here as a placeholder. What the buyer confirms is frozen on the payment.',
+    'field_withdrawal_days' => 'Withdrawal period in days',
+    'field_withdrawal_text' => 'Withdrawal notice',
+    'field_withdrawal_waiver_text' => 'Consent sentence for digital content',
+    'field_withdrawal_checkbox_required' => 'Buyer must tick the consent',
+    'field_withdrawal_b2b_text' => 'Note for business buyers',
+    'field_withdrawal_pdf' => 'Attach the notice as a PDF to the confirmation',
+    'field_withdrawal_pdf_help' => 'Not implemented yet. The flag is stored; no attachment is produced from it so far.',
+    'withdrawal_version' => 'Version',
+    'withdrawal_version_help' => 'Changes with the period, the notice or the consent sentence. Written on every payment so the wording that applied can be traced later.',
+
+    // K·12 coupon batches
+    'coupons_generate' => 'Generate codes',
+    'coupons_generate_title' => 'Generate codes',
+    'coupons_generate_help' => 'All codes are created at once or not at all. Characters that are easily misread (0, O, 1, I, l) do not occur.',
+    'coupons_generate_action' => 'Generate',
+    'coupon_field_count' => 'Count',
+    'coupon_field_prefix' => 'Prefix',
+    'coupon_field_prefix_help' => 'In front of every code, up to 12 characters, no spaces. May be left empty.',
+    'coupon_field_length' => 'Length of the random part',
+    'coupon_field_length_help' => '6 to 12 characters.',
+    'coupon_field_name_pattern' => 'Name',
+    'coupon_field_name_pattern_help' => 'For you only. {n} becomes the running number, {code} the code.',
+    'coupon_field_max_uses_batch_help' => 'Per code. Empty means no limit.',
+    'coupons_generated' => 'One code generated.|:count codes generated.',
+    'coupon_batch_collisions' => 'No free code found after :attempts attempts. Nothing was created. Use a longer random part or another prefix.',
+
+    // K·15 revenue
+    'column_revenue' => 'Revenue',
 ];

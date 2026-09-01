@@ -139,6 +139,76 @@ two people at once.
 parses its block once even when there is nothing to yield, so markup outside that branch prints an
 empty offer.
 
+### Coupon batches
+
+**Codes erzeugen** on the Coupons screen makes up to 100 codes at once: a prefix, a random part of
+6 to 12 characters from an alphabet without `0`/`O`/`1`/`I`/`l`, one use each unless you say
+otherwise, and the same discount, window and offer list a single coupon has. All of them are made in
+one transaction: a code that collides is retried, and ten misses in a row abort the whole batch
+rather than leaving ninety-three. The dates are in the application's timezone, and the form says so.
+
+From the terminal, with the same options:
+
+```bash
+php artisan offers:coupons:generate --count=50 --prefix=CHOR- --percent=15 --until=2027-03-31
+```
+
+### Percentage discount
+
+Instead of typing an own price and a struck-through price by hand, an offer may carry
+`discount_percent` (1–99). The effective price is then the catalogue price minus that share, rounded
+to the cent, and the struck-through price *is* the catalogue price — so it can no longer go stale
+when the catalogue changes. An own price and a percentage together are refused.
+
+`Offer::effectiveAmountCent()` and `Offer::effectiveCompareAtCent()` are the two numbers;
+`amountCent()` delegates to the first and stays what it was for every caller.
+
+### Limits
+
+`quantity_limit`, `available_from` and `available_until` live on the offer, not on the funnel step:
+the same offer sold through two funnels is one scarcity. Sold means **paid** — the limit is compared
+against paid payment lines, never against a counter of its own. `remainingQuantity()` is `null`
+without a limit; `isSellable()` is false outside the window or at zero remaining, so the catalogue
+stops answering and no checkout can start. The listing shows the state in a column of its own.
+
+### Access window
+
+`access_starts_at` and `access_days` say when access begins and how long it lasts.
+`accessWindow()` returns `['starts_at' => 'Y-m-d'|null, 'days' => int|null]` or `null`. The funnel
+hands it to the payment as `meta['access']`; the entitlements bridge in `statamic-payments` turns it
+into `starts_at` and `expires_at`. This addon writes no entitlement itself.
+
+### Checkout fields
+
+`config('statamic-offers.checkout_fields')` is the **library**: every field a checkout could ask
+for, defined once (label, type `text|select|checkbox`, required, extra rules). The default library
+carries `name`, `street`, `postal_code`, `city`, `country` (two letters, `size:2`), `phone`,
+`company` and `vat_id`; add your own. The offer then **picks** from it — `checkout_fields` is a
+list of keys — and `Offer::checkoutFields()` returns only keys the library still knows. Nothing
+picked means the funnel step decides. `Goldnead\StatamicOffers\Offers::fieldLibrary()` is the
+normalised library for anyone rendering a form.
+
+### Withdrawal terms
+
+Six columns on the offer — `withdrawal_days`, `withdrawal_text`, `withdrawal_waiver_text`,
+`withdrawal_checkbox_required`, `withdrawal_b2b_text`, `withdrawal_pdf` — and a site-wide default
+in `config('statamic-offers.withdrawal')`, with `{days}`, `{seller_name}` and `{seller_contact}`
+filled from `config('statamic-offers.seller')`. `Offer::withdrawalTerms()` layers offer over config
+over default and returns:
+
+```php
+['days' => 14, 'text' => '…', 'waiver_text' => '…', 'checkbox_required' => true, 'b2b_text' => null, 'version' => 'a1b2c3d4e5f6']
+```
+
+**`version` is the contract with the payment.** It is a hash over period, text and waiver, and the
+checkout freezes `waiver_text` plus this version on the payment as `consent_text` and the whole
+array as `meta['withdrawal']` — so a text edited next month never rewrites what somebody consented
+to last month. That freezing is the funnel's job; this addon only says what the terms are today.
+
+The shipped wording is a **draft, to be checked by a lawyer**; it follows §§ 355, 356 Abs. 5 and
+356a BGB but no config file is legal advice. `withdrawal_pdf` is a stored flag only — **attaching
+the notice as a PDF is not implemented yet.**
+
 ### Counting
 
 Two numbers per offer: how often it was **shown**, and how often it was **accepted**.
@@ -152,6 +222,14 @@ every time a card is declined, and the number nobody can trust is worse than no 
 |---|---|---|
 | `handle_prefix` | `offer:` | Change it and every template referring to an offer changes too. Empty would let an offer reprice a product of the same name. |
 | `count_impressions` | `true` | Off means the shown count stays at zero and the ratio becomes meaningless. Useful on a heavily cached page, where it was meaningless anyway. |
+| `seller.name` · `seller.contact` | `null` | Fill the placeholders in the withdrawal text. Empty falls back to `app.name` and `mail.from.address`, which is wrong the moment a legal entity sells here. |
+| `withdrawal.*` | 14 days, German draft wording | The site-wide terms every offer inherits. A draft, to be checked by a lawyer. |
+| `checkout_fields` | eight fields incl. the invoice address | The library the offer form picks from. Removing a key silently drops it from every offer's picks. |
+
+The listing also shows **revenue** per offer — paid lines with the offer's handle, in the offer's
+currency — and a **slot filter**, which is what makes the Offers screen an upsell overview: filter
+to *after the purchase* and read shown, accepted, conversion and revenue side by side. The column
+only exists when the payment tables do.
 
 ## Multi-site
 

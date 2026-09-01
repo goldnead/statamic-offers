@@ -138,4 +138,83 @@ return [
     'coupon_deactivated' => 'Gutschein deaktiviert.|:count Gutscheine deaktiviert.',
     'yes' => 'Ja',
     'no' => 'Nein',
+
+    // Abschnitte im Formular
+    'section_price' => 'Preis',
+    'section_availability' => 'Verfügbarkeit',
+    'section_access' => 'Zugang',
+    'section_checkout' => 'Kasse',
+    'section_withdrawal' => 'Widerruf',
+    'section_mail' => 'Kaufbestätigung',
+
+    // K·6 Prozentrabatt
+    'field_discount_percent' => 'Rabatt in Prozent',
+    'field_discount_percent_help' => '1 bis 99. Der Preis ist dann der Katalogpreis abzüglich dieses Anteils, der Statt-Preis der Katalogpreis. Entweder das oder ein eigener Preis.',
+    'field_price_or_percent' => 'Entweder ein eigener Preis oder ein Rabatt in Prozent, nicht beides.',
+
+    // K·7 Mengen- und Zeitlimit
+    'column_availability' => 'Verfügbar',
+    'field_quantity_limit' => 'Stückzahl',
+    'field_quantity_limit_help' => 'Wie oft dieses Angebot höchstens verkauft wird. Gezählt werden bezahlte Käufe. Leer heißt: unbegrenzt.',
+    'field_available_from' => 'Verkauf ab',
+    'field_available_until' => 'Verkauf bis',
+    'field_available_help' => 'Außerhalb dieses Fensters ist das Angebot nicht verkaufbar, egal über welchen Funnel. Beides darf leer bleiben.',
+    'timezone_note' => 'Zeiten in :timezone.',
+    'availability_unlimited' => 'Unbegrenzt',
+    'availability_sold_out' => 'Ausverkauft',
+    'availability_not_yet' => 'Ab :date',
+    'availability_ended' => 'Beendet :date',
+    'availability_remaining' => 'Noch :count von :limit',
+    'availability_until' => 'bis :date',
+    'sold_count' => ':count verkauft',
+
+    // K·5 Zugang
+    'field_access_starts_at' => 'Zugang ab',
+    'field_access_days' => 'Zugang für Tage',
+    'field_access_help' => 'Leer heißt: sofort und unbefristet. Die Zugänge selbst schreibt statamic-entitlements; hier steht nur, was der Kauf ihm mitgibt.',
+
+    // S·6 Kassenfelder
+    'field_checkout_fields' => 'Felder an der Kasse',
+    'field_checkout_fields_help' => 'Diese Felder fragt die Kasse vor der Zahlung ab; Anschrift ist über 250 € Pflicht (§ 14 UStG). Nichts angehakt heißt: der Funnel-Schritt entscheidet.',
+    'field_checkout_fields_empty' => 'Die Bibliothek in der Konfiguration ist leer.',
+    'field_checkout_fields_invalid' => 'Jedes Feld muss in der Bibliothek der Konfiguration stehen.',
+    'checkout_field_name' => 'Name',
+    'checkout_field_street' => 'Straße und Hausnummer',
+    'checkout_field_postal_code' => 'Postleitzahl',
+    'checkout_field_city' => 'Ort',
+    'checkout_field_country' => 'Land (zweistellig, z. B. DE)',
+    'checkout_field_phone' => 'Telefon',
+    'checkout_field_company' => 'Firma',
+    'checkout_field_vat_id' => 'USt-IdNr.',
+
+    // P·3 Widerruf
+    'withdrawal_help' => 'Leer heißt: der Standard aus der Konfiguration, hier als Platzhalter zu sehen. Was der Käufer bestätigt, wird bei der Zahlung eingefroren.',
+    'field_withdrawal_days' => 'Widerrufsfrist in Tagen',
+    'field_withdrawal_text' => 'Widerrufsbelehrung',
+    'field_withdrawal_waiver_text' => 'Einwilligungssatz für digitale Inhalte',
+    'field_withdrawal_checkbox_required' => 'Käufer muss die Einwilligung anhaken',
+    'field_withdrawal_b2b_text' => 'Hinweis für Unternehmer',
+    'field_withdrawal_pdf' => 'Belehrung als PDF an die Kaufbestätigung hängen',
+    'field_withdrawal_pdf_help' => 'Noch nicht umgesetzt. Das Häkchen wird gespeichert, ein Anhang entsteht daraus bislang nicht.',
+    'withdrawal_version' => 'Fassung',
+    'withdrawal_version_help' => 'Ändert sich mit Frist, Belehrung oder Einwilligungssatz. Steht an jeder Zahlung, damit später nachvollziehbar ist, welcher Wortlaut galt.',
+
+    // K·12 Massen-Gutscheincodes
+    'coupons_generate' => 'Codes erzeugen',
+    'coupons_generate_title' => 'Codes erzeugen',
+    'coupons_generate_help' => 'Alle Codes entstehen auf einmal oder gar nicht. Zeichen, die sich leicht verlesen lassen (0, O, 1, I, l), kommen nicht vor.',
+    'coupons_generate_action' => 'Erzeugen',
+    'coupon_field_count' => 'Anzahl',
+    'coupon_field_prefix' => 'Präfix',
+    'coupon_field_prefix_help' => 'Steht vor jedem Code, bis zu 12 Zeichen, ohne Leerzeichen. Darf leer bleiben.',
+    'coupon_field_length' => 'Länge des Zufallsteils',
+    'coupon_field_length_help' => '6 bis 12 Zeichen.',
+    'coupon_field_name_pattern' => 'Name',
+    'coupon_field_name_pattern_help' => 'Nur für dich. {n} wird zur laufenden Nummer, {code} zum Code.',
+    'coupon_field_max_uses_batch_help' => 'Je Code. Leer heißt: ohne Grenze.',
+    'coupons_generated' => 'Ein Code erzeugt.|:count Codes erzeugt.',
+    'coupon_batch_collisions' => 'Nach :attempts Versuchen kein freier Code mehr gefunden. Nichts wurde angelegt. Längerer Zufallsteil oder anderes Präfix.',
+
+    // K·15 Umsatz
+    'column_revenue' => 'Umsatz',
 ];

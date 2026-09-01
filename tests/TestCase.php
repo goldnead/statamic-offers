@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Tests;
 
 use Goldnead\StatamicOffers\ServiceProvider;
+use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Tests\Support\FakeGateway;
 use Goldnead\StatamicPayments\Contracts\PaymentGateway;
 use Goldnead\StatamicPayments\Support\Catalogue;
@@ -55,6 +56,9 @@ abstract class TestCase extends AddonTestCase
         // Resolvers are static, so one test's catalogue would otherwise still
         // be answering in the next.
         Catalogue::forgetResolvers();
+
+        // Same for the per-request sales map: one process, many "requests".
+        OfferSales::forget();
 
         parent::tearDown();
     }
