@@ -265,7 +265,9 @@ class ServiceProvider extends AddonServiceProvider
             return true;
         }
 
-        return method_exists(EntitlementsBridge::class, 'slugsFor');
+        // Against the *installed* sibling, which the analyser reads as the
+        // newest one; the check is for the older ones a site may still run.
+        return method_exists(EntitlementsBridge::class, 'slugsFor'); // @phpstan-ignore function.alreadyNarrowedType
     }
 
     /**

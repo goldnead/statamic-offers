@@ -213,6 +213,7 @@ return [
     'coupon_field_name_pattern_help' => 'For you only. {n} becomes the running number, {code} the code.',
     'coupon_field_max_uses_batch_help' => 'Per code. Empty means no limit.',
     'coupons_generated' => 'One code generated.|:count codes generated.',
+    'coupon_batch_failed' => 'The codes could not be saved. Nothing was created; the reason is in the log.',
     'coupon_batch_collisions' => 'No free code found after :attempts attempts. Nothing was created. Use a longer random part or another prefix.',
 
     // K·15 revenue

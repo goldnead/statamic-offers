@@ -171,6 +171,19 @@ against paid payment lines, never against a counter of its own. `remainingQuanti
 without a limit; `isSellable()` is false outside the window or at zero remaining, so the catalogue
 stops answering and no checkout can start. The listing shows the state in a column of its own.
 
+**The limit is soft.** It is checked when a checkout starts and a sale is counted when it is paid,
+and nothing in between holds a unit the way a stock table would. To close that hole in practice,
+unpaid checkouts younger than an hour count as taken (`OfferSales::RESERVATION_MINUTES`); an
+abandoned checkout gives its unit back after that. It is still not a reservation: two people who
+start a checkout for the last unit within the same second can both pay. Where one unit too many
+is a real problem, set the limit with a reserve.
+
+**Revenue is net.** The listing's revenue column is gross line value minus the line's share of the
+payment's coupon (`payment_items.discount_cent`) minus its share of any refund
+(`payments.refunded_cent`, apportioned by the line's part of the payment total). On a
+`statamic-payments` older than 1.8 those columns do not exist, revenue stays gross, and the log
+says so once per request.
+
 ### Access window
 
 `access_starts_at` and `access_days` say when access begins and how long it lasts.
@@ -184,9 +197,16 @@ into `starts_at` and `expires_at`. This addon writes no entitlement itself.
 for, defined once (label, type `text|select|checkbox`, required, extra rules). The default library
 carries `name`, `street`, `postal_code`, `city`, `country` (two letters, `size:2`), `phone`,
 `company` and `vat_id`; add your own. The offer then **picks** from it — `checkout_fields` is a
-list of keys — and `Offer::checkoutFields()` returns only keys the library still knows. Nothing
-picked means the funnel step decides. `Goldnead\StatamicOffers\Offers::fieldLibrary()` is the
-normalised library for anyone rendering a form.
+list of keys — and `Offer::checkoutFields()` returns only keys the library still knows.
+`Goldnead\StatamicOffers\Offers::fieldLibrary()` is the normalised library for anyone rendering a
+form.
+
+**Decision: nothing picked means the funnel step decides,** not "ask for nothing". An offer
+created before this column existed, and an offer whose author never opened the section, must not
+silently strip the address fields a funnel step already asks for. An offer that wants a checkout
+with no extra fields at all says so on the step, where the fields were configured before this
+column arrived. `checkout_fields` is therefore stored as `null` when empty, and `checkoutFields()`
+returns `[]` for it — the caller reads `[]` as "no opinion".
 
 ### Withdrawal terms
 

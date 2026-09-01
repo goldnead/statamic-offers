@@ -76,6 +76,18 @@ class GenerateCoupons extends Command
         $amount = $this->option('amount');
         $maxUses = (int) $this->option('max-uses');
 
+        if ($percent !== null && $percent !== '' && ((int) $percent < 1 || (int) $percent > 100 || (string) (int) $percent !== (string) $percent)) {
+            $this->components->error('--percent must be a whole number between 1 and 100.');
+
+            return self::INVALID;
+        }
+
+        if ($amount !== null && $amount !== '' && ((int) $amount < 1 || (string) (int) $amount !== (string) $amount)) {
+            $this->components->error('--amount must be a whole number of minor units, at least 1.');
+
+            return self::INVALID;
+        }
+
         try {
             $made = $this->batch->generate([
                 'count' => $count,

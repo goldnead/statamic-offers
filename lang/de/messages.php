@@ -213,6 +213,7 @@ return [
     'coupon_field_name_pattern_help' => 'Nur für dich. {n} wird zur laufenden Nummer, {code} zum Code.',
     'coupon_field_max_uses_batch_help' => 'Je Code. Leer heißt: ohne Grenze.',
     'coupons_generated' => 'Ein Code erzeugt.|:count Codes erzeugt.',
+    'coupon_batch_failed' => 'Die Codes konnten nicht gespeichert werden. Nichts wurde angelegt; der Grund steht im Log.',
     'coupon_batch_collisions' => 'Nach :attempts Versuchen kein freier Code mehr gefunden. Nichts wurde angelegt. Längerer Zufallsteil oder anderes Präfix.',
 
     // K·15 Umsatz

@@ -124,14 +124,32 @@ class WithdrawalTermsTest extends TestCase
     }
 
     #[Test]
-    public function the_control_panel_refuses_a_period_over_a_year(): void
+    public function the_control_panel_refuses_a_period_over_a_year_or_of_zero_days(): void
     {
-        $this->actingAs($this->user())->postJson('/cp/utilities/offers', [
-            'name' => 'Kurs',
-            'handle' => 'kurs',
-            'product' => 'noten-paket',
-            'slot' => Offer::SLOT_STANDALONE,
-            'withdrawal_days' => 400,
-        ])->assertJsonValidationErrors(['withdrawal_days']);
+        foreach ([400, 0] as $days) {
+            $this->actingAs($this->user())->postJson('/cp/utilities/offers', [
+                'name' => 'Kurs',
+                'handle' => 'kurs',
+                'product' => 'noten-paket',
+                'slot' => Offer::SLOT_STANDALONE,
+                'withdrawal_days' => $days,
+            ])->assertJsonValidationErrors(['withdrawal_days']);
+        }
+
+        $this->assertSame(0, Offer::count());
+    }
+
+    #[Test]
+    public function a_new_seller_name_is_a_new_version(): void
+    {
+        config()->set('statamic-offers.seller', ['name' => 'Alte Firma', 'contact' => 'post@example.com']);
+        $offer = $this->offer();
+        $before = $offer->withdrawalTerms()['version'];
+
+        // The name is inside the text the buyer reads, so the text — and with
+        // it the wording that gets frozen on a payment — is a different one.
+        config()->set('statamic-offers.seller', ['name' => 'Neue Firma GmbH', 'contact' => 'post@example.com']);
+
+        $this->assertNotSame($before, $offer->withdrawalTerms()['version']);
     }
 }

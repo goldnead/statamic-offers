@@ -128,7 +128,7 @@ class ListedOffer extends JsonResource
      */
     protected function availability(): array
     {
-        $remaining = $this->remainingQuantity();
+        $remaining = $this->remainingForListing();
         $now = Carbon::now();
 
         if ($this->available_from !== null && $now->lt($this->available_from)) {
@@ -166,6 +166,25 @@ class ListedOffer extends JsonResource
             'state' => $parts === [] ? 'unlimited' : 'limited',
             'remaining' => $remaining,
         ];
+    }
+
+    /**
+     * What is left, from the per-request map rather than a fresh query.
+     *
+     * One query for the page instead of one per row; the map counts paid plus
+     * reserved units exactly as the checkout does, so the column and the
+     * checkout agree. `null` is "no limit", and also "nothing to count
+     * against" when the payment tables are missing.
+     */
+    protected function remainingForListing(): ?int
+    {
+        if ($this->quantity_limit === null) {
+            return null;
+        }
+
+        $committed = OfferSales::committedForListing($this->resource);
+
+        return $committed === null ? null : max(0, $this->quantity_limit - $committed);
     }
 
     /** The locale's own short date and time, like the coupons screen. */

@@ -200,6 +200,12 @@ class CouponBatchTest extends TestCase
         $this->artisan(GenerateCoupons::class, ['--count' => 0, '--percent' => 10])->assertExitCode(2);
         $this->artisan(GenerateCoupons::class, ['--count' => 2, '--percent' => 10, '--offer' => ['gibt-es-nicht']])->assertExitCode(2);
 
+        // The percentage is bounded the same way the form bounds it.
+        $this->artisan(GenerateCoupons::class, ['--count' => 2, '--percent' => 0])->assertExitCode(2);
+        $this->artisan(GenerateCoupons::class, ['--count' => 2, '--percent' => 150])->assertExitCode(2);
+        $this->artisan(GenerateCoupons::class, ['--count' => 2, '--percent' => '12.5'])->assertExitCode(2);
+        $this->artisan(GenerateCoupons::class, ['--count' => 2, '--amount' => 0])->assertExitCode(2);
+
         $this->assertSame(0, Coupon::count());
     }
 }

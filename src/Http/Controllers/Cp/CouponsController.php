@@ -7,9 +7,11 @@ use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\CouponBatch;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -153,6 +155,15 @@ class CouponsController extends CpController
                 'max_uses' => array_key_exists('max_uses', $data) && $data['max_uses'] !== null ? (int) $data['max_uses'] : null,
                 'active' => true,
             ]);
+        } catch (QueryException $e) {
+            // The database said no — a unique index the lookup did not see, a
+            // connection gone. Nothing was written, the batch is one
+            // transaction; the reason belongs in the log, not on the form,
+            // where a driver message would be noise to the person and a
+            // schema hint to anyone else.
+            Log::error('statamic-offers: coupon batch failed in the database.', ['exception' => $e]);
+
+            throw ValidationException::withMessages(['count' => __('statamic-offers::messages.coupon_batch_failed')]);
         } catch (RuntimeException $e) {
             // Nothing was written — the batch is one transaction — so the
             // person gets the reason on the form instead of a partial set.

@@ -400,6 +400,15 @@ class Offer extends Model
      * zero: a limit lowered under what was already sold reads as "sold out",
      * not as a debt.
      *
+     * **This is a soft limit, not a reservation.** The check happens when a
+     * checkout starts and the sale is counted when it is paid; nothing in
+     * between holds a unit the way a stock table would. `OfferSales::sold()`
+     * narrows the hole by counting unpaid checkouts younger than an hour as
+     * taken, which closes it for practical purposes — but two people who
+     * click within the same second on the last unit can both start a
+     * checkout, and both may pay. For a contingent where one unit too many is
+     * a real problem, set the limit with a reserve.
+     *
      * With the payment tables missing there is nothing to count against, and
      * the honest answer is "no limit can be enforced" — returned as null, with
      * the log line `OfferSales` writes once per request.

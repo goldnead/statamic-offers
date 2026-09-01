@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Tests\Feature;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Goldnead\StatamicPayments\Support\Checkout;
@@ -82,15 +83,42 @@ class AvailabilityTest extends TestCase
     }
 
     #[Test]
-    public function an_unpaid_purchase_does_not_count(): void
+    public function a_fresh_unpaid_checkout_holds_its_unit_and_an_old_one_gives_it_back(): void
     {
+        Carbon::setTestNow('2027-05-10 12:00:00');
         $offer = $this->offer(['quantity_limit' => 1]);
 
-        // Started, never paid.
+        // Started, not yet paid: somebody is typing a card number. The last
+        // unit is theirs for the moment, and the next visitor is told so.
         app(Checkout::class)->start('offer:knapp', ['email' => 'k@example.com']);
+
+        $this->assertSame(0, $offer->remainingQuantity());
+        $this->assertFalse($offer->isSellable());
+
+        // An hour later the checkout is abandoned as far as the limit is
+        // concerned, and the unit is on sale again. Nothing was ever paid.
+        Carbon::setTestNow('2027-05-10 13:00:01');
+        OfferSales::forget();
 
         $this->assertSame(1, $offer->remainingQuantity());
         $this->assertTrue($offer->isSellable());
+    }
+
+    #[Test]
+    public function the_listing_subtracts_reserved_units_too(): void
+    {
+        $this->offer(['quantity_limit' => 3]);
+        app(Checkout::class)->start('offer:knapp', ['email' => 'k@example.com']);
+        $this->buyAndPay('offer:knapp');
+
+        OfferSales::forget();
+
+        $row = collect($this->actingAs($this->user())->getJson('/cp/utilities/offers')->json('data'))
+            ->firstWhere('handle', 'knapp');
+
+        // One paid, one held: one left — the same answer a checkout gets.
+        $this->assertSame(1, $row['availability']['remaining']);
+        $this->assertSame(1, $row['sold']);
     }
 
     #[Test]

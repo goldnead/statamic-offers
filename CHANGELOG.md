@@ -35,8 +35,11 @@ Listing lesen die effektiven Werte.
 ### Mengen- und Zeitlimit (K·7)
 
 `quantity_limit`, `available_from`, `available_until`. Verkauft = bezahlte `payment_items` mit dem
-Kaufhandle des Angebots, jedes Mal frisch gezählt. `remainingQuantity()`, `isWithinWindow()`;
-`isSellable()` berücksichtigt beides. Spalte **Verfügbar** im Listing.
+Kaufhandle des Angebots, jedes Mal frisch gezählt; dazu zählen offene Checkouts jünger als eine
+Stunde als reserviert (`OfferSales::RESERVATION_MINUTES`), damit das Fenster zwischen Start und
+Bezahlung praktisch zu ist. Das Limit bleibt weich, keine Reservierung im Datenbanksinn.
+`remainingQuantity()`, `isWithinWindow()`; `isSellable()` berücksichtigt beides. Spalte
+**Verfügbar** im Listing.
 
 ### Massen-Gutscheincodes (K·12)
 
@@ -46,8 +49,11 @@ Code, Abbruch nach zehn Kollisionen statt Teilmenge. Zeitzone steht am Formular.
 
 ### Upsell-Übersicht (K·15)
 
-Filter **Ort** am Angebots-Listing und Spalte **Umsatz** (bezahlte Zeilen in der Angebotswährung;
-fehlt ohne Zahlungstabellen).
+Filter **Ort** am Angebots-Listing und Spalte **Umsatz**: netto, also bezahlte Zeilen in der
+Angebotswährung abzüglich des Gutscheinanteils der Zeile (`payment_items.discount_cent`) und ihres
+Anteils an Erstattungen (`payments.refunded_cent`, anteilig am Zahlungsbetrag). Fehlt ohne
+Zahlungstabellen; auf `statamic-payments` vor 1.8 ohne die beiden Spalten bleibt sie brutto, mit
+Hinweis im Log.
 
 ## 1.4.0
 

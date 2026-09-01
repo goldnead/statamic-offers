@@ -187,7 +187,10 @@ class OffersController extends CpController
             'checkout_fields.*' => ['string', Rule::in(Offers::fieldKeys())],
             // Withdrawal. Every field empty means "the config's default", so
             // nothing here is required; what is typed is bounded.
-            'withdrawal_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            // At least one: a period of zero days is not a shorter period, it
+            // is "no right of withdrawal", and that is not something a number
+            // field should be able to say by accident.
+            'withdrawal_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'withdrawal_text' => ['nullable', 'string', 'max:20000'],
             'withdrawal_waiver_text' => ['nullable', 'string', 'max:2000'],
             'withdrawal_checkbox_required' => ['nullable', 'boolean'],
