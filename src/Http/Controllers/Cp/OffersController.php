@@ -344,6 +344,16 @@ class OffersController extends CpController
         // der QueryBuilder-Vertrag kein `where()` deklariert — die statische
         // Analyse haette den ganzen Zweig sonst nicht pruefen koennen.
         return Entry::whereCollection('et_templates')
+            // **Nur veroeffentlichte.** `whereCollection()` filtert nicht
+            // danach, und ein Entwurf im Auswahlfeld ist kein Entwurf mehr: wer
+            // ihn waehlt, schickt ihn an zahlende Kunden. Ein Hinweis im
+            // Titel ist dafuer kein Schutz, sondern eine Bitte.
+            //
+            // Ein Angebot, dessen Vorlage spaeter zurueck auf Entwurf gesetzt
+            // wird, faellt damit beim naechsten Speichern aus der Validierung —
+            // und das ist richtig herum: lieber jemand muss die Vorlage wieder
+            // freigeben, als dass ein unfertiger Text stillschweigend rausgeht.
+            ->filter(fn ($entry) => $entry->published())
             ->map(fn ($entry) => [
                 'value' => (string) $entry->slug(),
                 // The title, because that is what the person naming the

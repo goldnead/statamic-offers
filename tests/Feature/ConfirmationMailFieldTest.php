@@ -175,7 +175,7 @@ class ConfirmationMailFieldTest extends TestCase
      * blieben gruen, waehrend „eigene Mail waehlen" komplett kaputt sein
      * konnte: falscher Collection-Handle, falsche Query, falsches Feld.
      */
-    protected function templateAnlegen(string $slug, string $titel): void
+    protected function templateAnlegen(string $slug, string $titel, bool $published = true): void
     {
         // Das Addon erkennt das Schwester-Paket an seiner Fassade, nicht an der
         // Collection-Datei — die bleibt naemlich liegen, wenn jemand das Paket
@@ -189,7 +189,9 @@ class ConfirmationMailFieldTest extends TestCase
             tap(Collection::make('et_templates')->title('E-Mail-Vorlagen'))->save();
         }
 
-        tap(Entry::make()->collection('et_templates')->slug($slug)->data(['title' => $titel]))->save();
+        tap(
+            Entry::make()->collection('et_templates')->slug($slug)->data(['title' => $titel])->published($published)
+        )->save();
     }
 
     #[Test]
@@ -228,6 +230,35 @@ class ConfirmationMailFieldTest extends TestCase
             ['kauf-bestaetigung', 'willkommen'],
             array_column($props['confirmationTemplates'], 'value'),
         );
+    }
+
+    #[Test]
+    public function a_draft_template_is_neither_offered_nor_accepted(): void
+    {
+        $this->templateAnlegen('kauf-bestaetigung', 'Kaufbestätigung');
+        $this->templateAnlegen('noch-nicht-fertig', 'Entwurf', published: false);
+
+        // Ein Nutzer, zweimal benutzt: ein zweiter braeuchte Statamic Pro.
+        $user = $this->user();
+
+        $props = $this->actingAs($user)
+            ->get('/cp/utilities/offers')
+            ->assertOk()
+            ->viewData('page')['props'];
+
+        // Ein Entwurf im Auswahlfeld ist kein Entwurf mehr: wer ihn waehlt,
+        // schickt ihn an zahlende Kunden. Ein Hinweis im Titel ist dafuer kein
+        // Schutz, sondern eine Bitte.
+        $this->assertSame(['kauf-bestaetigung'], array_column($props['confirmationTemplates'], 'value'));
+
+        // Und die Validierung glaubt dem Formular nicht: ein Client, der den
+        // Slug trotzdem schickt, kommt nicht durch.
+        $this->actingAs($user)
+            ->postJson('/cp/utilities/offers', $this->valid([
+                'confirmation_mode' => Offer::CONFIRMATION_CUSTOM,
+                'confirmation_template' => 'noch-nicht-fertig',
+            ]))
+            ->assertJsonValidationErrors('confirmation_template');
     }
 
     #[Test]
