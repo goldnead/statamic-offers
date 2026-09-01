@@ -10,6 +10,7 @@ use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
+use Goldnead\StatamicOffers\Query\Scopes\Filters\OfferSlot;
 use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Support\Facades\Log;
@@ -33,6 +34,7 @@ class ServiceProvider extends AddonServiceProvider
     protected $scopes = [
         CouponActive::class,
         CouponLive::class,
+        OfferSlot::class,
     ];
 
     /**
@@ -233,7 +235,7 @@ class ServiceProvider extends AddonServiceProvider
         // would win over the offer's, which is the whole point of an offer.
         return [
             'name' => $offer->name,
-            'amount_cent' => $offer->amountCent(),
+            'amount_cent' => $offer->effectiveAmountCent(),
             'currency' => $offer->currency(),
             // What the payment line will remember it was sold as. An offer
             // renamed next year must not rewrite an old order.
@@ -385,6 +387,8 @@ class ServiceProvider extends AddonServiceProvider
                 // coupon id on the way in.
                 $router->post('actions', [CouponActionsController::class, 'run'])->name('actions');
                 $router->post('actions/list', [CouponActionsController::class, 'bulkActions'])->name('actions.list');
+                // Same reason: "generate" must not be read as a coupon id.
+                $router->post('generate', [CouponsController::class, 'generate'])->name('generate');
                 $router->post('/', [CouponsController::class, 'store'])->name('store');
                 $router->patch('{coupon}', [CouponsController::class, 'update'])->name('update');
                 $router->delete('{coupon}', [CouponsController::class, 'destroy'])->name('destroy');
