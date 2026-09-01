@@ -5,14 +5,17 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 use Goldnead\StatamicOffers\Http\Resources\Cp\CouponsCollection;
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\CouponBatch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Inertia\Inertia;
+use RuntimeException;
 use Statamic\Facades\Scope;
 use Statamic\Http\Controllers\CP\CpController;
 use Statamic\Http\Requests\FilteredRequest;
@@ -45,6 +48,17 @@ class CouponsController extends CpController
         return Inertia::render('statamic-offers::Coupons/Index', [
             'listingUrl' => cp_route('utilities.coupons'),
             'storeUrl' => cp_route('utilities.coupons.store'),
+            'generateUrl' => cp_route('utilities.coupons.generate'),
+            // Named beside the date fields: a "valid until" typed without
+            // knowing which clock it runs on ends a campaign hours early.
+            'timezone' => (string) config('app.timezone', 'UTC'),
+            'batch' => [
+                'maxCount' => CouponBatch::MAX_COUNT,
+                'maxPrefix' => CouponBatch::MAX_PREFIX,
+                'minLength' => CouponBatch::MIN_LENGTH,
+                'maxLength' => CouponBatch::MAX_LENGTH,
+                'defaultLength' => CouponBatch::DEFAULT_LENGTH,
+            ],
             // Without an action URL the listing renders no checkboxes and no
             // bulk toolbar, which is the difference between this screen and
             // the Entries screen a user just came from.
@@ -90,6 +104,65 @@ class CouponsController extends CpController
         $coupon->delete();
 
         return back()->with('message', __('statamic-offers::messages.coupon_deleted'));
+    }
+
+    /**
+     * Many codes at once. Same shape as one, minus the code, plus a count.
+     */
+    public function generate(Request $request, CouponBatch $batch)
+    {
+        $this->authorizeAccess();
+
+        $validator = Validator::make($request->all(), [
+            'count' => ['required', 'integer', 'min:1', 'max:'.CouponBatch::MAX_COUNT],
+            'prefix' => ['nullable', 'string', 'max:'.CouponBatch::MAX_PREFIX, 'regex:/^\S*$/'],
+            'length' => ['nullable', 'integer', 'min:'.CouponBatch::MIN_LENGTH, 'max:'.CouponBatch::MAX_LENGTH],
+            'name' => ['nullable', 'string', 'max:191'],
+            'percent' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'amount_cent' => ['nullable', 'integer', 'min:1'],
+            'currency' => ['nullable', 'string', 'size:3'],
+            'offers' => ['nullable', 'array'],
+            'offers.*' => ['string', Rule::exists('offers', 'handle')],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => array_filter([
+                'nullable', 'date', $request->filled('starts_at') ? 'after:starts_at' : null,
+            ]),
+            // Nullable here means "no limit", which a batch has to ask for;
+            // the form sends 1 unless somebody changes it.
+            'max_uses' => ['nullable', 'integer', 'min:1'],
+        ], [
+            'offers.*.exists' => __('statamic-offers::messages.coupon_offers_invalid'),
+        ]);
+
+        $validator->after(fn (ValidatorInstance $validator) => $this->checkExactlyOneDiscount($validator, $request));
+
+        $data = $validator->validate();
+
+        try {
+            $made = $batch->generate([
+                'count' => (int) $data['count'],
+                'prefix' => $data['prefix'] ?? null,
+                'length' => isset($data['length']) ? (int) $data['length'] : null,
+                'name' => $data['name'] ?? null,
+                'percent' => isset($data['percent']) ? (int) $data['percent'] : null,
+                'amount_cent' => isset($data['amount_cent']) ? (int) $data['amount_cent'] : null,
+                'currency' => $data['currency'] ?? null,
+                'offers' => (array) ($data['offers'] ?? []),
+                'starts_at' => $this->startOfDay($data['starts_at'] ?? null),
+                'ends_at' => $this->endOfDay($data['ends_at'] ?? null),
+                'max_uses' => array_key_exists('max_uses', $data) && $data['max_uses'] !== null ? (int) $data['max_uses'] : null,
+                'active' => true,
+            ]);
+        } catch (RuntimeException $e) {
+            // Nothing was written — the batch is one transaction — so the
+            // person gets the reason on the form instead of a partial set.
+            throw ValidationException::withMessages(['count' => $e->getMessage()]);
+        }
+
+        return back()->with('message', trans_choice('statamic-offers::messages.coupons_generated', $made->count(), [
+            'count' => $made->count(),
+            'prefix' => mb_strtoupper(trim((string) ($data['prefix'] ?? ''))),
+        ]));
     }
 
     /**
@@ -312,6 +385,19 @@ class CouponsController extends CpController
             'field_max_uses' => __('statamic-offers::messages.coupon_field_max_uses'),
             'field_max_uses_help' => __('statamic-offers::messages.coupon_field_max_uses_help'),
             'field_active' => __('statamic-offers::messages.coupon_field_active'),
+            'generate' => __('statamic-offers::messages.coupons_generate'),
+            'generate_title' => __('statamic-offers::messages.coupons_generate_title'),
+            'generate_help' => __('statamic-offers::messages.coupons_generate_help'),
+            'generate_action' => __('statamic-offers::messages.coupons_generate_action'),
+            'field_count' => __('statamic-offers::messages.coupon_field_count'),
+            'field_prefix' => __('statamic-offers::messages.coupon_field_prefix'),
+            'field_prefix_help' => __('statamic-offers::messages.coupon_field_prefix_help'),
+            'field_length' => __('statamic-offers::messages.coupon_field_length'),
+            'field_length_help' => __('statamic-offers::messages.coupon_field_length_help'),
+            'field_name_pattern' => __('statamic-offers::messages.coupon_field_name_pattern'),
+            'field_name_pattern_help' => __('statamic-offers::messages.coupon_field_name_pattern_help'),
+            'field_max_uses_batch_help' => __('statamic-offers::messages.coupon_field_max_uses_batch_help'),
+            'timezone_note' => __('statamic-offers::messages.timezone_note'),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
             'save' => __('Save'),

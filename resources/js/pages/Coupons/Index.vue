@@ -21,6 +21,9 @@ import {
 const props = defineProps({
     listingUrl: { type: String, required: true },
     storeUrl: { type: String, required: true },
+    generateUrl: { type: String, required: true },
+    timezone: { type: String, default: 'UTC' },
+    batch: { type: Object, default: () => ({ maxCount: 100, maxPrefix: 12, minLength: 6, maxLength: 12, defaultLength: 8 }) },
     actionUrl: { type: String, required: true },
     filters: { type: Array, default: () => [] },
     sortColumn: { type: String, default: 'code' },
@@ -124,6 +127,54 @@ function amountChanged(value) {
     form.value.amount_cent = value;
     if (value !== null && value !== '') form.value.percent = null;
 }
+
+/**
+ * Many codes at once.
+ *
+ * A second stack with the same fields as one coupon, minus the code and plus
+ * a count. All of them are made in one transaction on the server, or none.
+ */
+const blankBatch = () => ({
+    count: 10, prefix: '', length: props.batch.defaultLength, name: '',
+    percent: null, amount_cent: null, currency: null,
+    offers: [],
+    starts_at: null, ends_at: null,
+    max_uses: 1,
+});
+
+const batchOpen = ref(false);
+const batchSaving = ref(false);
+const batchErrors = ref({});
+const batchForm = ref(blankBatch());
+
+const timezoneNote = computed(() => props.t.timezone_note.replace(':timezone', props.timezone));
+
+function openBatch() {
+    batchForm.value = blankBatch();
+    batchErrors.value = {};
+    batchOpen.value = true;
+}
+
+function batchPercentChanged(value) {
+    batchForm.value.percent = value;
+    if (value !== null && value !== '') batchForm.value.amount_cent = null;
+}
+
+function batchAmountChanged(value) {
+    batchForm.value.amount_cent = value;
+    if (value !== null && value !== '') batchForm.value.percent = null;
+}
+
+function generate() {
+    batchSaving.value = true;
+
+    router.post(props.generateUrl, batchForm.value, {
+        preserveScroll: true,
+        onError: (e) => { batchErrors.value = e || {}; },
+        onSuccess: () => { batchOpen.value = false; batchErrors.value = {}; listing.value?.refresh(); },
+        onFinish: () => { batchSaving.value = false; },
+    });
+}
 </script>
 
 <template>
@@ -131,8 +182,15 @@ function amountChanged(value) {
         <Head :title="[t.title]" />
 
         <Header :title="t.title" icon="shopping-store-discount-percent">
+            <Button :text="t.generate" @click="openBatch" />
             <Button variant="primary" :text="t.new" @click="create" />
         </Header>
+
+        <CommandPaletteItem
+            :text="[t.utilities, t.title, t.generate]"
+            icon="shopping-store-discount-percent"
+            :action="openBatch"
+        />
 
         <CommandPaletteItem
             :text="[t.utilities, t.title]"
@@ -294,7 +352,7 @@ function amountChanged(value) {
                             </Field>
                         </div>
 
-                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_dates_help }}</p>
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_dates_help }} {{ timezoneNote }}</p>
                     </div>
 
                     <Field :label="t.field_max_uses" :instructions="t.field_max_uses_help" :error="errors.max_uses">
@@ -310,6 +368,107 @@ function amountChanged(value) {
                     <div class="flex justify-end gap-2">
                         <Button :text="t.cancel" @click="open = false" />
                         <Button variant="primary" :text="t.save" :disabled="saving" @click="save" />
+                    </div>
+                </div>
+            </div>
+        </Stack>
+
+        <!-- The batch. Same shell as the single form, so the two read as one
+             screen with two doors rather than two features. -->
+        <Stack v-model:open="batchOpen" size="narrow">
+            <div class="flex h-full flex-col bg-content-bg">
+                <div class="border-b border-content-border px-6 py-4">
+                    <Heading :text="t.generate_title" size="lg" />
+                </div>
+
+                <div class="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ t.generate_help }}</p>
+
+                    <Alert v-if="batchErrors.count" variant="error" :text="batchErrors.count" />
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_count" :error="batchErrors.count" required>
+                            <Input v-model.number="batchForm.count" type="number" min="1" :max="batch.maxCount" />
+                        </Field>
+
+                        <Field :label="t.field_length" :instructions="t.field_length_help" :error="batchErrors.length">
+                            <Input v-model.number="batchForm.length" type="number" :min="batch.minLength" :max="batch.maxLength" />
+                        </Field>
+                    </div>
+
+                    <Field :label="t.field_prefix" :instructions="t.field_prefix_help" :error="batchErrors.prefix">
+                        <Input v-model="batchForm.prefix" class="font-mono uppercase" :maxlength="batch.maxPrefix" />
+                    </Field>
+
+                    <Field :label="t.field_name_pattern" :instructions="t.field_name_pattern_help" :error="batchErrors.name">
+                        <Input v-model="batchForm.name" />
+                    </Field>
+
+                    <div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <Field :label="t.field_percent" :error="batchErrors.percent">
+                                <Input
+                                    :model-value="batchForm.percent"
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    append="%"
+                                    @update:model-value="batchPercentChanged($event === '' ? null : Number($event))"
+                                />
+                            </Field>
+
+                            <Field :label="t.field_amount" :error="batchErrors.amount_cent">
+                                <Input
+                                    :model-value="batchForm.amount_cent"
+                                    type="number"
+                                    min="1"
+                                    :append="batchForm.currency || currency"
+                                    @update:model-value="batchAmountChanged($event === '' ? null : Number($event))"
+                                />
+                            </Field>
+                        </div>
+
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_discount_help }}</p>
+                    </div>
+
+                    <Field :label="t.field_currency" :instructions="t.field_currency_help" :error="batchErrors.currency">
+                        <Input v-model="batchForm.currency" class="font-mono uppercase" :placeholder="currency" />
+                    </Field>
+
+                    <Field :label="t.field_offers" :instructions="t.field_offers_help" :error="batchErrors.offers">
+                        <Combobox
+                            v-model="batchForm.offers"
+                            :options="offers"
+                            :placeholder="t.field_offers_placeholder"
+                            multiple
+                            searchable
+                            clearable
+                        />
+                    </Field>
+
+                    <div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <Field :label="t.field_starts_at" :error="batchErrors.starts_at">
+                                <Input v-model="batchForm.starts_at" type="date" />
+                            </Field>
+
+                            <Field :label="t.field_ends_at" :error="batchErrors.ends_at">
+                                <Input v-model="batchForm.ends_at" type="date" />
+                            </Field>
+                        </div>
+
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_dates_help }} {{ timezoneNote }}</p>
+                    </div>
+
+                    <Field :label="t.field_max_uses" :instructions="t.field_max_uses_batch_help" :error="batchErrors.max_uses">
+                        <Input v-model.number="batchForm.max_uses" type="number" min="1" :placeholder="t.usage_unlimited" />
+                    </Field>
+                </div>
+
+                <div class="border-t border-content-border px-6 py-4">
+                    <div class="flex justify-end gap-2">
+                        <Button :text="t.cancel" @click="batchOpen = false" />
+                        <Button variant="primary" :text="t.generate_action" :disabled="batchSaving" @click="generate" />
                     </div>
                 </div>
             </div>
