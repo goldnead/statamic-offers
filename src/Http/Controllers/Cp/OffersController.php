@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
+use Statamic\Facades\Collection;
+use Statamic\Facades\Entry;
 use Statamic\Http\Controllers\CP\CpController;
 use Statamic\Http\Requests\FilteredRequest;
 use Statamic\Query\Scopes\Filters\Concerns\QueriesFilters;
@@ -57,6 +59,15 @@ class OffersController extends CpController
             // bump ends up pointing at a post-purchase upsell that then never
             // renders.
             'bumpOptions' => $this->bumpOptions(),
+            'confirmationModes' => collect(Offer::confirmationModes())->map(fn (string $mode) => [
+                'value' => $mode,
+                'label' => __('statamic-offers::messages.confirmation_'.$mode),
+                'description' => __('statamic-offers::messages.confirmation_'.$mode.'_description'),
+            ])->all(),
+            // Empty when the email-templates addon is not installed. The form
+            // uses that emptiness to hide the "own mail" choice altogether
+            // rather than offering a picker with nothing in it.
+            'confirmationTemplates' => $this->confirmationTemplates(),
             // Every label on the screen, translated here rather than in the
             // template. See the coupons screen for the reasoning; the two are
             // built the same way on purpose.
@@ -135,6 +146,36 @@ class OffersController extends CpController
             'button_label' => ['nullable', 'string', 'max:191'],
             'image' => ['nullable', 'string', 'max:500'],
             'slot' => ['required', Rule::in(Offer::slots())],
+            // Which mail the buyer gets. Not free text: the three answers are
+            // the whole vocabulary, and a field left out has to mean the
+            // standard mail rather than an empty column that a listener would
+            // later read as silence.
+            'confirmation_mode' => ['nullable', Rule::in(Offer::confirmationModes())],
+            // The slug of a managed `et_templates` entry, checked against the
+            // list that exists **at this moment**. That catches the typo and
+            // the stale pick in front of the person who can fix them.
+            //
+            // **It is not a guarantee that outlives the save.** Delete the
+            // template tomorrow and this column still names it. Nothing here
+            // can prevent that, so the sending side must not depend on it: the
+            // host's sender falls back to its own text and logs loudly when a
+            // named template no longer resolves. A validation rule that
+            // pretended to be a guarantee would be the more dangerous half of
+            // the two.
+            //
+            // Only meaningful alongside `custom`; the cleanup below drops it
+            // otherwise.
+            //
+            // `exclude_unless` rather than a plain rule: a form that switches
+            // the mode back to `default` still posts whatever template was in
+            // the field a moment ago, and validating that leftover would refuse
+            // the save over a value the offer is about to stop using. Excluded,
+            // it never reaches the column either — the cleanup below nulls it.
+            'confirmation_template' => [
+                'exclude_unless:confirmation_mode,'.Offer::CONFIRMATION_CUSTOM,
+                'nullable', 'string', 'max:191',
+                Rule::in(array_column($this->confirmationTemplates(), 'value')),
+            ],
             // A select the browser fills freely. Every handle has to be an
             // offer that exists *and* is placed at checkout, or the checkbox
             // renders as a product the buyer cannot be charged for; and it may
@@ -158,6 +199,22 @@ class OffersController extends CpController
         // is every client that is not this addon's own form.
         $data['active'] = $request->boolean('active');
         $data['currency'] = ($data['currency'] ?? null) ? strtoupper($data['currency']) : null;
+
+        // Same reasoning as `active`: a client that omits the field is not
+        // saying "send nothing", it is saying nothing. The standard mail is
+        // what an offer sends unless somebody decided otherwise.
+        $data['confirmation_mode'] = (string) ($data['confirmation_mode'] ?? Offer::CONFIRMATION_DEFAULT)
+            ?: Offer::CONFIRMATION_DEFAULT;
+
+        // A template only means something next to `custom`. Kept on a row that
+        // has since been switched back to `default`, it would reappear the
+        // moment somebody flips the mode — as a choice they never made, in the
+        // mail a buyer receives.
+        if ($data['confirmation_mode'] !== Offer::CONFIRMATION_CUSTOM) {
+            $data['confirmation_template'] = null;
+        } else {
+            $data['confirmation_template'] = trim((string) ($data['confirmation_template'] ?? '')) ?: null;
+        }
 
         // Duplicates would render the same checkbox twice and charge for it
         // twice. The order is kept, because the order somebody dragged them
@@ -240,6 +297,7 @@ class OffersController extends CpController
             'amount' => 'amount_cent',
             'slot' => 'slot',
             'active' => 'active',
+            'confirmation' => 'confirmation_mode',
             'product' => 'product',
         ];
 
@@ -262,6 +320,61 @@ class OffersController extends CpController
             ->get(['handle', 'name'])
             ->map(fn (Offer $offer) => ['value' => $offer->handle, 'label' => $offer->name])
             ->all();
+    }
+
+    /**
+     * The managed email templates a confirmation may be rendered from.
+     *
+     * **Optional coupling, on purpose.** `goldnead/statamic-email-templates` is
+     * not a composer dependency of this addon and must not become one — an
+     * offer is sellable without it. Its collection is detected rather than
+     * required, and an installation without it gets an empty list, which the
+     * form reads as "no own-mail choice here".
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    protected function confirmationTemplates(): array
+    {
+        if (! self::emailTemplatesInstalled()) {
+            return [];
+        }
+
+        // `whereCollection()` statt `query()->where('collection', …)`: die
+        // Facade gibt dafuer eine typisierte EntryCollection zurueck, waehrend
+        // der QueryBuilder-Vertrag kein `where()` deklariert — die statische
+        // Analyse haette den ganzen Zweig sonst nicht pruefen koennen.
+        return Entry::whereCollection('et_templates')
+            ->map(fn ($entry) => [
+                'value' => (string) $entry->slug(),
+                // The title, because that is what the person naming the
+                // template wrote; the slug in brackets, because that is what
+                // ends up in the column and in every log line about it.
+                'label' => trim((string) ($entry->get('title') ?: $entry->slug())).' ('.$entry->slug().')',
+            ])
+            ->filter(fn (array $option) => $option['value'] !== '')
+            ->sortBy('label')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Ist das Schwester-Addon wirklich da?
+     *
+     * **Zwei Fragen, weil eine nicht reicht.** Die Collection ist eine Datei
+     * unter `content/collections/`, und die bleibt liegen, wenn jemand
+     * `goldnead/statamic-email-templates` aus der `composer.json` nimmt. Nur
+     * `handleExists()` zu fragen hiesse: das Formular bietet weiter „Eigene
+     * Mail" an, die alten Slugs sehen gueltig aus, und nichts kann daraus mehr
+     * eine Mail machen. Die Facade beantwortet die andere Haelfte — sie
+     * existiert genau dann als Klasse, wenn das Paket installiert ist.
+     *
+     * Als String und nicht als Import: eine `use`-Zeile auf ein optionales
+     * Paket ist eine Abhaengigkeit, die die `composer.json` nicht kennt.
+     */
+    protected static function emailTemplatesInstalled(): bool
+    {
+        return class_exists('Goldnead\\EmailTemplates\\Facades\\EmailTemplates')
+            && Collection::handleExists('et_templates');
     }
 
     /**
@@ -307,6 +420,19 @@ class OffersController extends CpController
             'field_image' => __('statamic-offers::messages.field_image'),
             'field_image_help' => __('statamic-offers::messages.field_image_help'),
             'field_active' => __('statamic-offers::messages.field_active'),
+            'field_usage' => __('statamic-offers::messages.field_usage'),
+            'field_usage_help' => __('statamic-offers::messages.field_usage_help'),
+            'usage_empty' => __('statamic-offers::messages.usage_empty'),
+            'usage_funnels' => __('statamic-offers::messages.usage_funnels'),
+            'usage_automations' => __('statamic-offers::messages.usage_automations'),
+            'usage_no_automations' => __('statamic-offers::messages.usage_no_automations'),
+            'usage_disabled' => __('statamic-offers::messages.usage_disabled'),
+            'field_confirmation' => __('statamic-offers::messages.field_confirmation'),
+            'field_confirmation_help' => __('statamic-offers::messages.field_confirmation_help'),
+            'field_confirmation_template' => __('statamic-offers::messages.field_confirmation_template'),
+            'field_confirmation_template_help' => __('statamic-offers::messages.field_confirmation_template_help'),
+            'field_confirmation_template_placeholder' => __('statamic-offers::messages.field_confirmation_template_placeholder'),
+            'field_confirmation_template_missing' => __('statamic-offers::messages.field_confirmation_template_missing'),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
             'save' => __('Save'),

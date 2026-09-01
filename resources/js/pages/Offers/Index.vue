@@ -28,6 +28,8 @@ const props = defineProps({
     slots: { type: Array, default: () => [] },
     currency: { type: String, default: 'EUR' },
     bumpOptions: { type: Array, default: () => [] },
+    confirmationModes: { type: Array, default: () => [] },
+    confirmationTemplates: { type: Array, default: () => [] },
     t: { type: Object, required: true },
 });
 
@@ -36,6 +38,9 @@ const blank = () => ({
     amount_cent: null, compare_at_cent: null, currency: null,
     headline: '', body: '', button_label: '', image: '',
     slot: 'standalone', bumps: [], active: true, products: [],
+    // The standard mail, so that an offer created and saved without ever
+    // opening this field still reaches its buyer.
+    confirmation_mode: 'default', confirmation_template: null,
 });
 
 /**
@@ -54,6 +59,45 @@ const form = ref(blank());
 const title = computed(() => (editing.value ? props.t.edit : props.t.new));
 
 const slotHelp = computed(() => props.slots.find((s) => s.value === form.value.slot)?.description ?? '');
+
+const confirmationHelp = computed(
+    () => props.confirmationModes.find((m) => m.value === form.value.confirmation_mode)?.description ?? '',
+);
+
+/**
+ * "Own mail" stays on the list even with no templates to pick from.
+ *
+ * Hiding it would be tidier on an empty install and wrong on a real one: an
+ * offer already set to `custom` would open on a select that does not contain
+ * its own value, and the next save would silently move it to the standard
+ * mail. The choice stays, and the picker below explains why it is empty.
+ */
+const hasTemplates = computed(() => props.confirmationTemplates.length > 0);
+
+const wantsTemplate = computed(() => form.value.confirmation_mode === 'custom');
+
+/**
+ * Was an dem gerade bearbeiteten Angebot haengt.
+ *
+ * Kommt mit der Zeile aus der Liste, nicht aus einem eigenen Abruf: ein
+ * Kaestchen, das erst nachlaedt, sieht im Zweifel leer aus — und „leer" ist
+ * hier eine Aussage, keine Ladephase.
+ */
+const usage = computed(() => editing.value?.usage ?? { funnels: [], automations: [] });
+
+/**
+ * Leaving "own mail" drops the template with it.
+ *
+ * The server does this too, and has to — it is the only side that can be
+ * trusted. Here it is so the field does not quietly keep a value the form no
+ * longer shows, and hand it back the moment somebody switches to `custom`
+ * again as a choice they never made.
+ */
+watch(wantsTemplate, (wants) => {
+    if (!wants) {
+        form.value.confirmation_template = null;
+    }
+});
 
 /**
  * An offer may not carry itself.
@@ -256,6 +300,10 @@ const statusColor = (row) => {
                 <Badge :color="statusColor(row)" :text="row.active ? t.yes : t.no" />
             </template>
 
+            <template #cell-confirmation="{ row }">
+                <Badge :color="row.confirmation_silent ? 'orange' : 'gray'" :text="row.confirmation" />
+            </template>
+
             <template #cell-product="{ row }">
                 <span class="font-mono text-xs">{{ row.product }}</span>
                 <span v-if="row.products_count" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
@@ -385,6 +433,57 @@ const statusColor = (row) => {
 
                 <Field :label="t.field_image" :instructions="t.field_image_help" :error="errors.image">
                     <Input v-model="form.image" />
+                </Field>
+
+                <!--
+                    Was an diesem Angebot haengt. Auch — und gerade — wenn
+                    nichts daran haengt: ein fehlendes Kaestchen liest sich wie
+                    „noch nicht gebaut", ein leeres wie „nichts verdrahtet".
+                    Der Unterschied ist der Grund, warum die fehlende Kaufmail
+                    einen Monat lang niemandem auffiel.
+                -->
+                <Field v-if="editing" :label="t.field_usage" :instructions="t.field_usage_help">
+                    <div class="text-sm">
+                        <p v-if="!usage.funnels.length && !usage.automations.length" class="text-gray">
+                            {{ t.usage_empty }}
+                        </p>
+                        <template v-else>
+                            <p v-if="usage.funnels.length">
+                                <strong>{{ t.usage_funnels }}</strong>
+                                {{ usage.funnels.map((f) => f.title).join(', ') }}
+                            </p>
+                            <p v-if="usage.automations.length">
+                                <strong>{{ t.usage_automations }}</strong>
+                                <span v-for="(a, i) in usage.automations" :key="a.name">
+                                    {{ i ? ', ' : '' }}{{ a.name }}<template v-if="!a.enabled"> ({{ t.usage_disabled }})</template>
+                                </span>
+                            </p>
+                            <p v-else class="text-gray">{{ t.usage_no_automations }}</p>
+                        </template>
+                    </div>
+                </Field>
+
+                <Field
+                    :label="t.field_confirmation"
+                    :instructions="confirmationHelp || t.field_confirmation_help"
+                    :error="errors.confirmation_mode"
+                >
+                    <Select v-model="form.confirmation_mode" :options="confirmationModes" />
+                </Field>
+
+                <Field
+                    v-if="wantsTemplate"
+                    :label="t.field_confirmation_template"
+                    :instructions="hasTemplates ? t.field_confirmation_template_help : t.field_confirmation_template_missing"
+                    :error="errors.confirmation_template"
+                >
+                    <Select
+                        v-if="hasTemplates"
+                        v-model="form.confirmation_template"
+                        :options="confirmationTemplates"
+                        :placeholder="t.field_confirmation_template_placeholder"
+                        clearable
+                    />
                 </Field>
 
                 <Field :label="t.field_active">

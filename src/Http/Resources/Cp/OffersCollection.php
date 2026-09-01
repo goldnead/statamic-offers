@@ -40,7 +40,12 @@ class OffersCollection extends ResourceCollection
             Column::make('bumps')->label(__('statamic-offers::messages.column_bumps'))->sortable(false)->numeric(true)->defaultOrder(5),
             Column::make('performance')->label(__('statamic-offers::messages.column_performance'))->sortable(false)->defaultOrder(6),
             Column::make('active')->label(__('statamic-offers::messages.column_active'))->sortable(true)->defaultOrder(7),
-            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(8)->defaultVisibility(false)->visible(false),
+            // Visible by default, and that is the point of it. An offer that
+            // sends the buyer nothing is not a setting anybody should have to
+            // open a form to discover — that discovery is what took a month
+            // the last time.
+            Column::make('confirmation')->label(__('statamic-offers::messages.column_confirmation'))->sortable(true)->defaultOrder(8),
+            Column::make('product')->label(__('statamic-offers::messages.column_product'))->sortable(true)->defaultOrder(9)->defaultVisibility(false)->visible(false),
         ]);
 
         if ($key = $this->columnPreferenceKey) {

@@ -4,6 +4,7 @@ namespace Goldnead\StatamicOffers\Http\Resources\Cp;
 
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\CpNumber;
+use Goldnead\StatamicOffers\Support\OfferUsage;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
@@ -41,6 +42,12 @@ class ListedOffer extends JsonResource
             // an empty cell reads as "none".
             'bumps_count' => count((array) ($this->bumps ?? [])) ?: null,
             'active' => $this->active,
+            // Two values rather than one: the label is what the column reads,
+            // the flag is what lets the screen mark "none" as the exception it
+            // is. Working that out in the template would put the vocabulary of
+            // the column in two places.
+            'confirmation' => __('statamic-offers::messages.confirmation_'.($this->confirmation_mode ?: Offer::CONFIRMATION_DEFAULT)),
+            'confirmation_silent' => ! $this->sendsConfirmation(),
             'sellable' => $this->isSellable(),
             'shown_count' => $this->shown_count,
             'accepted_count' => $this->accepted_count,
@@ -49,6 +56,11 @@ class ListedOffer extends JsonResource
             'conversion' => $this->shown_count > 0
                 ? CpNumber::decimal($this->accepted_count / $this->shown_count * 100, 1)
                 : null,
+            // Was an diesem Angebot haengt. Am Zeilen-Objekt und nicht als
+            // eigener Abruf, damit das Formular es beim Aufklappen schon hat —
+            // ein Kaestchen, das erst nachlaedt, ist eins, das im Zweifel leer
+            // aussieht.
+            'usage' => OfferUsage::forHandle($this->handle),
             'edit_values' => [
                 'name' => $this->name,
                 'handle' => $this->handle,
@@ -64,6 +76,12 @@ class ListedOffer extends JsonResource
                 'slot' => $this->slot,
                 'bumps' => (array) ($this->bumps ?? []),
                 'active' => $this->active,
+                // Falls back rather than handing over an empty string: a row
+                // written before this column existed has `null` here, and the
+                // form would otherwise open with no mode selected and save the
+                // offer into silence on the next click.
+                'confirmation_mode' => $this->confirmation_mode ?: Offer::CONFIRMATION_DEFAULT,
+                'confirmation_template' => $this->confirmation_template,
             ],
         ];
     }

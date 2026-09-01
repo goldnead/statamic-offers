@@ -21,6 +21,8 @@ use Illuminate\Support\Carbon;
  * @property string|null $body
  * @property string|null $image
  * @property string|null $button_label
+ * @property string $confirmation_mode
+ * @property string|null $confirmation_template
  * @property list<string>|null $bumps
  * @property string $slot
  * @property bool $active
@@ -39,6 +41,15 @@ class Offer extends Model
 
     /** Anywhere a template asks for it. */
     public const SLOT_STANDALONE = 'standalone';
+
+    /** Send the site's standard purchase confirmation. */
+    public const CONFIRMATION_DEFAULT = 'default';
+
+    /** Send the template named in `confirmation_template`. */
+    public const CONFIRMATION_CUSTOM = 'custom';
+
+    /** Send nothing. Only ever because somebody chose it. */
+    public const CONFIRMATION_NONE = 'none';
 
     protected $guarded = [];
 
@@ -101,6 +112,50 @@ class Offer extends Model
     public static function slots(): array
     {
         return [self::SLOT_BUMP, self::SLOT_POST_PURCHASE, self::SLOT_STANDALONE];
+    }
+
+    /** @return list<string> */
+    public static function confirmationModes(): array
+    {
+        return [self::CONFIRMATION_DEFAULT, self::CONFIRMATION_CUSTOM, self::CONFIRMATION_NONE];
+    }
+
+    /**
+     * Which template the confirmation for this offer should be rendered from,
+     * or `null` for the site's standard one.
+     *
+     * **A `custom` mode with no template is not silence.** It is an offer whose
+     * author picked "own mail" and then did not name one, and the honest
+     * reading of that is "they meant to send something". Falling through to the
+     * standard mail keeps the buyer served; falling through to nothing would
+     * turn a half-finished form into a silent defect, which is the shape of the
+     * bug this whole column exists to close.
+     *
+     * Only {@see self::CONFIRMATION_NONE} means nothing goes out, and
+     * {@see self::sendsConfirmation()} is the one place that decides it.
+     */
+    public function confirmationTemplate(): ?string
+    {
+        if ($this->confirmation_mode !== self::CONFIRMATION_CUSTOM) {
+            return null;
+        }
+
+        $slug = trim((string) $this->confirmation_template);
+
+        return $slug === '' ? null : $slug;
+    }
+
+    /**
+     * Whether a purchase of this offer owes the buyer a confirmation.
+     *
+     * An unknown value in the column counts as yes. The column is written by a
+     * validated form, so an unknown value means something went wrong upstream —
+     * and of the two ways to be wrong, sending a mail nobody expected is the
+     * recoverable one.
+     */
+    public function sendsConfirmation(): bool
+    {
+        return $this->confirmation_mode !== self::CONFIRMATION_NONE;
     }
 
     /**
