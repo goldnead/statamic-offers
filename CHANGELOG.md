@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 — 2026-09-02
 
 Sieben Befunde aus dem Suite-Register vom 01.09.2026. Fünf additive Migrationen an `offers`, alle
 mit `hasColumn`-Schutz; bestehende Zeilen bleiben, wie sie sind.
@@ -54,6 +54,13 @@ Angebotswährung abzüglich des Gutscheinanteils der Zeile (`payment_items.disco
 Anteils an Erstattungen (`payments.refunded_cent`, anteilig am Zahlungsbetrag). Fehlt ohne
 Zahlungstabellen; auf `statamic-payments` vor 1.8 ohne die beiden Spalten bleibt sie brutto, mit
 Hinweis im Log.
+
+## 1.5.0 — 2026-09-01
+
+Nachgetragen: die Fassung 1.5.0 ging ohne Eintrag raus. Sie brachte die **Kaufbestätigung als
+Feld am Angebot** (`confirmation_mode` Standard / eigene Vorlage / keine, `confirmation_template`
+aus `et_templates`, nur veröffentlichte Vorlagen wählbar) und den Kasten **„Wo dieses Angebot
+verwendet wird"** (Funnels und Automationen, `OfferUsage`) im Bearbeiten-Formular.
 
 ## 1.4.0
 
