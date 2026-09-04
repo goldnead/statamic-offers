@@ -375,6 +375,19 @@ class ServiceProvider extends AddonServiceProvider
         Nav::extend(function ($nav) {
             $section = SuiteNav::section();
 
+            // Erst aushaengen, dann einhaengen — sonst steht jeder Bildschirm
+            // zweimal da: einmal unter „Hilfsmittel", wohin `Utility::register`
+            // ihn haengt, und einmal hier. Die Registrierung bleibt, sie traegt
+            // Route, Recht und Middleware; nur der Eintrag unter Hilfsmittel
+            // faellt weg. Der Elternpunkt heisst intern `Utilities`, das Kind
+            // traegt seinen bereits uebersetzten `navTitle`.
+            foreach ([
+                'statamic-offers::messages.utility_nav',
+                'statamic-offers::messages.coupons_utility_nav',
+            ] as $schluessel) {
+                $nav->remove('Tools', 'Utilities', __($schluessel));
+            }
+
             $nav->create(__('statamic-offers::messages.utility_nav'))
                 ->section($section)
                 ->icon('money-cashier-price-tag')
