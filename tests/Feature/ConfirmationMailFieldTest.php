@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Tests\Feature;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Tests\Support\EmailTemplatesFacadeStandIn;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
@@ -180,9 +181,11 @@ class ConfirmationMailFieldTest extends TestCase
         // Das Addon erkennt das Schwester-Paket an seiner Fassade, nicht an der
         // Collection-Datei — die bleibt naemlich liegen, wenn jemand das Paket
         // deinstalliert. Fuer den Test muss deshalb beides da sein. Ein Alias
-        // reicht: geprueft wird die Anwesenheit, nicht das Verhalten.
+        // reicht: geprueft wird die Anwesenheit, nicht das Verhalten. Die
+        // Klasse dahinter muss selbst definiert sein — `\stdClass` lehnt
+        // `class_alias()` vor PHP 8.3 ab.
         if (! class_exists('Goldnead\\EmailTemplates\\Facades\\EmailTemplates')) {
-            class_alias(\stdClass::class, 'Goldnead\\EmailTemplates\\Facades\\EmailTemplates');
+            class_alias(EmailTemplatesFacadeStandIn::class, 'Goldnead\\EmailTemplates\\Facades\\EmailTemplates');
         }
 
         if (! Collection::handleExists('et_templates')) {

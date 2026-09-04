@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.7.0 — 2026-09-05
+
+Ein Befund aus Adrians Durchgang vom 03.09.2026 (F36), dazu ein Testfehler, der nur auf PHP 8.2
+auftrat.
+
+### Angebote und Gutscheine im Verkaufs-Abschnitt
+
+Beide Bildschirme sind als Statamic-Utilities registriert und standen unter „Hilfsmittel", zwischen
+Cache und PHP-Info. Jetzt hängen sie im Verkaufs-Abschnitt, den `statamic-payments` mit
+`Cp\SuiteNav::section()` benennt: derselbe Abschnitt wie Zahlungen, Produkte und Funnels. Ein
+eigener String hier wäre ein zweiter Abschnitt mit fast demselben Namen, denn Statamic übersetzt
+Abschnittsnamen nicht.
+
+Route und Recht bleiben. Die Einträge unter „Hilfsmittel" werden ausgehängt, sonst stünde jeder
+Bildschirm zweimal da; so war es im ersten Anlauf vom 04.09.
+
+**Setzt `goldnead/statamic-payments` ab 1.18.0 voraus**, dort erst gibt es `Cp\SuiteNav`.
+
+### Testsuite auf PHP 8.2
+
+`ConfirmationMailFieldTest` legte die Fassade des Schwester-Pakets `statamic-email-templates` per
+`class_alias()` auf `\stdClass`. Das erlaubt PHP erst ab 8.3; auf 8.2 warf jeder Test mit
+Vorlagen einen `ValueError`, das 8.2-Bein der Matrix war seit diesem Test rot. Der Alias zeigt
+jetzt auf eine eigene leere Klasse (`Tests\Support\EmailTemplatesFacadeStandIn`). Betroffen war
+nur die Suite, nicht das Paket.
+
 ## 1.6.0 — 2026-09-02
 
 Sieben Befunde aus dem Suite-Register vom 01.09.2026. Fünf additive Migrationen an `offers`, alle
