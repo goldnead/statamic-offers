@@ -14,7 +14,9 @@ use Goldnead\StatamicOffers\Query\Scopes\Filters\OfferSlot;
 use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Support\Facades\Log;
+use Goldnead\StatamicPayments\Cp\SuiteNav;
 use Statamic\Actions\Action;
+use Statamic\Facades\CP\Nav;
 use Statamic\Facades\Utility;
 use Statamic\Providers\AddonServiceProvider;
 use Statamic\Query\Scopes\Scope;
@@ -79,6 +81,7 @@ class ServiceProvider extends AddonServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         $this->bootUtilities();
+        $this->bootNavigation();
 
         $this->publishes([
             __DIR__.'/../config/statamic-offers.php' => config_path('statamic-offers.php'),
@@ -353,6 +356,39 @@ class ServiceProvider extends AddonServiceProvider
         }
 
         return $fakten;
+    }
+
+    /**
+     * Angebote und Gutscheine in die Seitenleiste holen.
+     *
+     * Sie bleiben Statamic-Utilities — dieselbe Route, dasselbe Recht. Was
+     * fehlte, war der Weg dorthin: unter „Hilfsmittel" stehen sie zwischen
+     * Cache und PHP-Info, und genau das hat Adrian am 03.09.2026 als verwirrend
+     * gemeldet.
+     *
+     * Der Abschnittsname kommt aus `statamic-payments`, an dem dieses Addon
+     * ohnehin haengt. Ein eigener String hier waere ein zweiter Abschnitt mit
+     * fast demselben Namen, denn Statamic uebersetzt Abschnittsnamen nicht.
+     */
+    protected function bootNavigation(): self
+    {
+        Nav::extend(function ($nav) {
+            $section = SuiteNav::section();
+
+            $nav->create(__('statamic-offers::messages.utility_nav'))
+                ->section($section)
+                ->icon('money-cashier-price-tag')
+                ->route('utilities.offers')
+                ->can('access offers utility');
+
+            $nav->create(__('statamic-offers::messages.coupons_utility_nav'))
+                ->section($section)
+                ->icon('media-ticket')
+                ->route('utilities.coupons')
+                ->can('access coupons utility');
+        });
+
+        return $this;
     }
 
     protected function bootUtilities(): self
