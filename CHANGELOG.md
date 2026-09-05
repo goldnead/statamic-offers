@@ -21,12 +21,19 @@ hinter `class_exists()`, wie in `statamic-booking`: mit älterem payments bekomm
 Bildschirme einen eigenen Abschnitt „Angebote" statt eines `Class not found` beim Aufbau der
 ganzen CP-Navigation. Den gemeinsamen Verkaufs-Abschnitt gibt es ab payments 1.18.0.
 
-### Constraint: payments ab 1.9
+### Constraint: payments ab 1.10
 
-`goldnead/statamic-payments` verlangt jetzt `^1.9` statt `^1.6`. Das Paket liest seit längerem
-`discount_cent` (payments 1.9.0) und `refunded_cent` (1.4.0) aus der Zahlungstabelle; mit
-payments 1.6 bis 1.8 lief die Umsatzspalte ins Leere, und das prefer-lowest-Bein der CI war rot.
-Der Constraint sagt jetzt, was der Code braucht.
+`goldnead/statamic-payments` verlangt jetzt `^1.10` statt `^1.6`. Die Umsatzspalte rechnet netto
+über `payment_items.discount_cent` (payments 1.4.0) und `payments.refunded_cent`, und Letzteres
+gibt es samt `Support\Refunds` erst seit payments 1.10.0. Mit 1.6 bis 1.9 blieb die Spalte brutto
+und das prefer-lowest-Bein der CI war rot. Der Constraint sagt jetzt, was der Code braucht.
+
+### Kein `Request::get()` mehr in den Listings
+
+`OffersController` und `CouponsController` lasen Suche, Seitengröße und Sortierung über
+`$request->get()`. Symfony http-foundation 7.4 hat die Methode als veraltet markiert, und mit dem
+ältesten erlaubten Laravel 12 landet die Warnung im Log; in der Suite, die das Log stellvertretend
+prüft, war das ein Fehler. Jetzt `$request->input()`, gleiche Quelle, kein Hinweis.
 
 ### Testsuite auf PHP 8.2
 

@@ -11,7 +11,7 @@
   "require": {
     "php": "^8.2",
     "statamic/cms": "^6.0",
-    "goldnead/statamic-payments": "^1.9"
+    "goldnead/statamic-payments": "^1.10"
   },
   "require-dev": {
     "larastan/larastan": "^3.0",

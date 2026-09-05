@@ -362,7 +362,7 @@ class OffersController extends CpController
     {
         $query = Offer::query();
 
-        if ($search = trim((string) $request->get('search', ''))) {
+        if ($search = trim((string) $request->input('search', ''))) {
             $this->applySearch($query, $search);
         }
 
@@ -371,7 +371,7 @@ class OffersController extends CpController
         [$column, $direction] = $this->order($request);
         $query->orderBy($column, $direction);
 
-        return (new OffersCollection($query->paginate(Statamic::cpPerPage($request->get('perPage')))))
+        return (new OffersCollection($query->paginate(Statamic::cpPerPage($request->input('perPage')))))
             ->columnPreferenceKey('statamic-offers.offers.columns')
             ->additional(['meta' => ['activeFilterBadges' => $badges]]);
     }
@@ -418,8 +418,8 @@ class OffersController extends CpController
             'availability' => 'available_until',
         ];
 
-        $requested = (string) $request->get('sort', 'name');
-        $direction = strtolower((string) $request->get('order', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $requested = (string) $request->input('sort', 'name');
+        $direction = strtolower((string) $request->input('order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         return [$sortable[$requested] ?? 'name', $direction];
     }

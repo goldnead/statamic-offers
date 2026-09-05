@@ -286,7 +286,7 @@ class CouponsController extends CpController
     {
         $query = Coupon::query();
 
-        if ($search = trim((string) $request->get('search', ''))) {
+        if ($search = trim((string) $request->input('search', ''))) {
             $this->applySearch($query, $search);
         }
 
@@ -295,7 +295,7 @@ class CouponsController extends CpController
         [$column, $direction] = $this->order($request);
         $query->orderBy($column, $direction);
 
-        return (new CouponsCollection($query->paginate(Statamic::cpPerPage($request->get('perPage')))))
+        return (new CouponsCollection($query->paginate(Statamic::cpPerPage($request->input('perPage')))))
             ->columnPreferenceKey('statamic-offers.coupons.columns')
             ->additional(['meta' => ['activeFilterBadges' => $badges]]);
     }
@@ -341,8 +341,8 @@ class CouponsController extends CpController
             'active' => 'active',
         ];
 
-        $requested = (string) $request->get('sort', 'code');
-        $direction = strtolower((string) $request->get('order', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $requested = (string) $request->input('sort', 'code');
+        $direction = strtolower((string) $request->input('order', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         return [$sortable[$requested] ?? 'code', $direction];
     }
