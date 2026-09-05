@@ -16,7 +16,17 @@ Abschnittsnamen nicht.
 Route und Recht bleiben. Die Einträge unter „Hilfsmittel" werden ausgehängt, sonst stünde jeder
 Bildschirm zweimal da; so war es im ersten Anlauf vom 04.09.
 
-**Setzt `goldnead/statamic-payments` ab 1.18.0 voraus**, dort erst gibt es `Cp\SuiteNav`.
+`Cp\SuiteNav` gibt es erst seit `goldnead/statamic-payments` 1.18.0. Der Aufruf steht deshalb
+hinter `class_exists()`, wie in `statamic-booking`: mit älterem payments bekommen beide
+Bildschirme einen eigenen Abschnitt „Angebote" statt eines `Class not found` beim Aufbau der
+ganzen CP-Navigation. Den gemeinsamen Verkaufs-Abschnitt gibt es ab payments 1.18.0.
+
+### Constraint: payments ab 1.9
+
+`goldnead/statamic-payments` verlangt jetzt `^1.9` statt `^1.6`. Das Paket liest seit längerem
+`discount_cent` (payments 1.9.0) und `refunded_cent` (1.4.0) aus der Zahlungstabelle; mit
+payments 1.6 bis 1.8 lief die Umsatzspalte ins Leere, und das prefer-lowest-Bein der CI war rot.
+Der Constraint sagt jetzt, was der Code braucht.
 
 ### Testsuite auf PHP 8.2
 

@@ -373,7 +373,13 @@ class ServiceProvider extends AddonServiceProvider
     protected function bootNavigation(): self
     {
         Nav::extend(function ($nav) {
-            $section = SuiteNav::section();
+            // `SuiteNav` gibt es erst seit payments 1.18.0, der Constraint
+            // erlaubt aelter. Ohne Wache faellt die ganze CP-Navigation mit
+            // "Class not found"; mit ihr bekommt eine Installation mit
+            // aelterem payments einen eigenen Abschnitt, wie booking es macht.
+            $section = class_exists(SuiteNav::class)
+                ? SuiteNav::section()
+                : __('statamic-offers::messages.utility_nav');
 
             // Erst aushaengen, dann einhaengen — sonst steht jeder Bildschirm
             // zweimal da: einmal unter „Hilfsmittel", wohin `Utility::register`
