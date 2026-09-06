@@ -32,7 +32,8 @@
   "extra": {
     "statamic": {
       "name": "Statamic Offers",
-      "description": "A product, a price of its own, the words that sell it, and where it appears."
+      "description": "A product, a price of its own, the words that sell it, and where it appears.",
+      "developer-url": "https://adriangoldner.dev"
     },
     "laravel": {
       "providers": [
