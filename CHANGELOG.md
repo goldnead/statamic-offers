@@ -1,6 +1,6 @@
 # Changelog
 
-## Unveröffentlicht
+## 1.8.0 — 2026-09-07
 
 ### Neu: ein Angebot kann seinen eigenen Zahlungsrhythmus nennen
 
