@@ -11,6 +11,7 @@
   "require": {
     "php": "^8.2",
     "statamic/cms": "^6.0",
+    "goldnead/statamic-brand-context": "^1.12",
     "goldnead/statamic-payments": "^1.10"
   },
   "require-dev": {

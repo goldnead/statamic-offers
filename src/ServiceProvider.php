@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers;
 
+use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\StatamicOffers\Actions\ActivateCoupon;
 use Goldnead\StatamicOffers\Actions\DeactivateCoupon;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
@@ -11,12 +12,14 @@ use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\OfferSlot;
+use Goldnead\StatamicOffers\Support\Settings;
 use Goldnead\StatamicPayments\Cp\SuiteNav;
 use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Support\Facades\Log;
 use Statamic\Actions\Action;
 use Statamic\Facades\CP\Nav;
+use Statamic\Facades\Permission;
 use Statamic\Facades\Utility;
 use Statamic\Providers\AddonServiceProvider;
 use Statamic\Query\Scopes\Scope;
@@ -75,6 +78,26 @@ class ServiceProvider extends AddonServiceProvider
         $this->bootCatalogue();
     }
 
+    public function boot()
+    {
+        parent::boot();
+
+        // Diesem Addon seine Einstellungen bei der gemeinsamen Schicht
+        // anmelden. Speicher, Formular, Validierung und Rechteprüfung stellt
+        // `statamic-brand-context`; hier steht nur die Feldliste
+        // (Support\Settings).
+        //
+        // In `boot()`, nicht in `bootAddon()`, und das ist keine Stilfrage:
+        // brand-context schiebt die gespeicherten Überschreibungen aus einem
+        // `app->booted()`-Callback auf die Config, damit vorher jeder Provider
+        // seine Runde hatte. `bootAddon()` läuft selbst aus einem
+        // `app->booted()`-Callback (Statamics AppServiceProvider), und welcher
+        // von beiden zuerst feuert, hängt an der Ladereihenfolge der Pakete.
+        // Eine Anmeldung dort erreichte die Live-Config auf manchen
+        // Installationen und auf anderen nicht.
+        $this->app->make(SettingsRegistry::class)->register(Settings::class);
+    }
+
     public function bootAddon()
     {
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'statamic-offers');
@@ -82,6 +105,7 @@ class ServiceProvider extends AddonServiceProvider
 
         $this->bootUtilities();
         $this->bootNavigation();
+        $this->bootPermissions();
 
         $this->publishes([
             __DIR__.'/../config/statamic-offers.php' => config_path('statamic-offers.php'),
@@ -405,6 +429,29 @@ class ServiceProvider extends AddonServiceProvider
                 ->icon('media-ticket')
                 ->route('utilities.coupons')
                 ->can('access coupons utility');
+        });
+
+        return $this;
+    }
+
+    /**
+     * Das Recht, das den Einstellungs-Abschnitt bewacht.
+     *
+     * Neu vergeben: dieses Addon hatte bisher keine Einstellungen. Die beiden
+     * bestehenden Rechte (`access offers utility`, `access coupons utility`)
+     * kommen von den Utilities und bleiben, wie sie sind — ein Umbenennen wäre
+     * ein stiller Rechteentzug auf jeder Installation, die sie vergeben hat.
+     *
+     * Registriert wird es hier, weil die Schicht nebenan nur fragt, welches
+     * Recht zu prüfen ist, und keines anlegt. Ohne diese Zeilen ist der
+     * Abschnitt nur für Super-Nutzer erreichbar und in der Rechteverwaltung
+     * nicht ankreuzbar.
+     */
+    protected function bootPermissions(): self
+    {
+        Permission::extend(function () {
+            Permission::register('manage offers settings')
+                ->label(__('statamic-offers::settings.permission'));
         });
 
         return $this;

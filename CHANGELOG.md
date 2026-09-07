@@ -1,5 +1,28 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Einstellungen im Control Panel
+
+Verkäufername, Kontakt, Widerrufsfrist, Widerrufsbelehrung, Verzichtserklärung, der Hinweis für
+Geschäftskäufer, das Pflicht-Häkchen und das Zählen der Einblendungen stehen unter
+**Einstellungen → Addon-Einstellungen**. Bisher waren es Paket-Vorgaben in
+`config/statamic-offers.php`: die Belehrung wird ausdrücklich als anwaltlich zu prüfender Entwurf
+ausgeliefert, und wer sie prüfen ließ, konnte sie danach nur mit Dateizugriff ändern.
+
+Bildschirm, Speicher, Validierung und Rechteprüfung stellt `goldnead/statamic-brand-context`
+(neue Abhängigkeit, ab 1.12). Gespeichert werden nur Abweichungen, alles andere folgt weiter der
+Config-Datei, und die Werte liegen je Marke. Neues Recht: `manage offers settings`; die
+bestehenden Utility-Rechte bleiben unverändert.
+
+Die Widerrufsbelehrung nutzt den mehrzeiligen Feldtyp `text` der Schicht. **Er ist in
+brand-context 1.12.0 noch nicht enthalten** — bis zum nächsten Tag dort fällt das Feld auf
+`string` zurück und die Validierung schneidet bei 255 Zeichen ab.
+
+`checkout_fields` bleibt in der Config: eine Feldbibliothek mit Beschriftung, Typ und Regeln je
+Eintrag passt in kein einzelnes Formularfeld. Die Einstellungsseite sagt das in der
+Gruppenbeschreibung, statt es zu verschweigen.
+
 ## 1.7.0 — 2026-09-05
 
 Ein Befund aus Adrians Durchgang vom 03.09.2026 (F36), dazu ein Testfehler, der nur auf PHP 8.2

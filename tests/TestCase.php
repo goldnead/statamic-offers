@@ -22,6 +22,11 @@ abstract class TestCase extends AddonTestCase
     protected function getPackageProviders($app)
     {
         return array_merge(parent::getPackageProviders($app), [
+            // Trägt die Einstellungs-Schicht: die Tabelle `brand_settings`, die
+            // Standardmarke und den `SettingsRegistry`, bei dem sich dieses
+            // Addon in `boot()` anmeldet. Vor dem eigenen Provider, damit die
+            // Registry schon da ist, wenn die Anmeldung kommt.
+            \Goldnead\BrandContext\ServiceProvider::class,
             \Goldnead\StatamicPayments\ServiceProvider::class,
         ]);
     }
@@ -32,6 +37,7 @@ abstract class TestCase extends AddonTestCase
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadMigrationsFrom(__DIR__.'/../vendor/goldnead/statamic-payments/database/migrations');
+        $this->loadMigrationsFrom(__DIR__.'/../vendor/goldnead/statamic-brand-context/database/migrations');
 
         // The fake is the point, not a convenience: a test that needs the
         // network is a test that gets skipped.
