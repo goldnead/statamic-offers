@@ -159,6 +159,18 @@ class OffersController extends CpController
             // Nullable means "use the catalogue price". Nullable *integer*
             // means nobody can post "12,00" and have it read as 12 cents.
             'amount_cent' => ['nullable', 'integer', 'min:1'],
+
+            // Der eigene Zahlungsrhythmus des Angebots. Leer heisst einmalig
+            // — der Normalfall. Steht hier etwas, ist `amount_cent` oben die
+            // **Ratenhoehe** und nicht der Gesamtpreis; das Angebot sagt das
+            // damit selbst, statt es aus einem Rabatt raten zu lassen.
+            'interval' => ['nullable', 'string', 'max:32'],
+
+            // Ohne Anzahl ein Abo, mit Anzahl eine Ratenzahlung. Null
+            // Abbuchungen sind ein Tippfehler, keine Anweisung.
+            'times' => ['nullable', 'integer', 'min:1', 'max:60'],
+            'trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'trial_amount_cent' => ['nullable', 'integer', 'min:0'],
             'compare_at_cent' => ['nullable', 'integer', 'min:1'],
             // A percentage off the catalogue price. 1 to 99: 0 is no discount
             // and 100 is a gift, and both are better said in words than typed
@@ -271,6 +283,26 @@ class OffersController extends CpController
 
         foreach (['withdrawal_text', 'withdrawal_waiver_text', 'withdrawal_b2b_text'] as $key) {
             $data[$key] = trim((string) ($data[$key] ?? '')) ?: null;
+        }
+
+        // Der Rhythmus ist der Schalter fuer die drei Felder daneben.
+        //
+        // Ein Formular schickt ein ungefuelltes Feld als leeren String. Der
+        // Resolver liest den zwar auch als „kein Plan", aber dann staende in
+        // der Spalte etwas, das keiner gemeint hat.
+        //
+        // Und ohne Rhythmus werden Anzahl, Testtage und Testbetrag mit
+        // geleert — sonst bleibt an einem einmaligen Angebot ein `times = 3`
+        // haengen, das niemand sieht und das wirkt, sobald jemand spaeter ein
+        // Intervall setzt. Bei wiederkehrendem Geld ist das kein
+        // Schoenheitsfehler.
+        $intervall = trim((string) ($data['interval'] ?? ''));
+        $data['interval'] = $intervall === '' ? null : $intervall;
+
+        foreach (['times', 'trial_days', 'trial_amount_cent'] as $key) {
+            $data[$key] = $data['interval'] !== null && isset($data[$key]) && $data[$key] !== ''
+                ? (int) $data[$key]
+                : null;
         }
 
         // Both flags have a default in the column, and an omitted field must
@@ -533,6 +565,13 @@ class OffersController extends CpController
             'field_products_placeholder' => __('statamic-offers::messages.field_products_placeholder'),
             'bundle_of' => __('statamic-offers::messages.bundle_of'),
             'field_amount' => __('statamic-offers::messages.field_amount'),
+            'field_plan_help' => __('statamic-offers::messages.field_plan_help'),
+            'field_interval' => __('statamic-offers::messages.field_interval'),
+            'field_interval_placeholder' => __('statamic-offers::messages.field_interval_placeholder'),
+            'field_times' => __('statamic-offers::messages.field_times'),
+            'field_times_placeholder' => __('statamic-offers::messages.field_times_placeholder'),
+            'field_trial_days' => __('statamic-offers::messages.field_trial_days'),
+            'field_trial_amount' => __('statamic-offers::messages.field_trial_amount'),
             'field_amount_help' => __('statamic-offers::messages.field_amount_help'),
             'field_compare_at' => __('statamic-offers::messages.field_compare_at'),
             'field_compare_at_help' => __('statamic-offers::messages.field_compare_at_help'),

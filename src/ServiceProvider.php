@@ -216,6 +216,36 @@ class ServiceProvider extends AddonServiceProvider
         // inherit.
         unset($product['interval'], $product['times'], $product['trial_days'], $product['trial_amount_cent']);
 
+        // **Der eigene Plan des Angebots — erklaert, nicht geerbt.**
+        //
+        // Der Riegel darueber bleibt und ist richtig. Was er verhindert, ist
+        // ein *geerbter* Rhythmus ueber einen Rabattpreis; was er nicht
+        // verhindern soll, ist ein Angebot, das seine Zahlungsbedingungen
+        // selbst nennt.
+        //
+        // Genau das ist die Antwort auf den Satz oben („until somebody decides
+        // that"): steht am Angebot ein `interval`, dann hat jemand entschieden,
+        // und `amount_cent` dieses Angebots ist **die Ratenhoehe** — von der
+        // Person eingetragen, die den Preis auch sonst setzt.
+        //
+        // Damit braucht „dasselbe in drei Raten" kein zweites Produkt mehr:
+        // ein Produkt, zwei Angebote. Zahlungsbedingungen sind Praesentation,
+        // und Praesentation ist, wofuer es Angebote gibt.
+        $intervall = is_string($offer->interval) ? trim($offer->interval) : '';
+
+        if ($intervall !== '') {
+            $product['interval'] = $intervall;
+
+            // Nur was gesetzt ist. `Subscriptions::planFor()` liest ein
+            // fehlendes `times` selbst als `null` — also als Abo — und ein
+            // ausgeschriebenes `null` waere dieselbe Aussage mit mehr Zeichen.
+            foreach (['times', 'trial_days', 'trial_amount_cent'] as $feld) {
+                if ($offer->{$feld} !== null) {
+                    $product[$feld] = (int) $offer->{$feld};
+                }
+            }
+        }
+
         // Ein Buendel gibt her, was alle seine Teile hergeben.
         //
         // **`grants` ist die Vereinigung, und das ist der Punkt eines

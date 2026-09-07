@@ -82,6 +82,15 @@ class ListedOffer extends JsonResource
                 'product' => $this->product,
                 'products' => array_values((array) ($this->products ?? [])),
                 'amount_cent' => $this->amount_cent,
+
+                // Der Zahlungsrhythmus des Angebots. `null` heisst einmalig —
+                // das Formular zeigt dann leere Felder. Ohne diese Zeilen
+                // liesse sich ein bestehender Plan im Control Panel nicht
+                // sehen und beim naechsten Speichern still ueberschreiben.
+                'interval' => $this->interval,
+                'times' => $this->times,
+                'trial_days' => $this->trial_days,
+                'trial_amount_cent' => $this->trial_amount_cent,
                 'compare_at_cent' => $this->compare_at_cent,
                 'discount_percent' => $this->discount_percent,
                 'quantity_limit' => $this->quantity_limit,

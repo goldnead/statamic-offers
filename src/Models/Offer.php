@@ -17,6 +17,12 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $product
  * @property int|null $amount_cent
+ * @property string|null $interval — der eigene Zahlungsrhythmus des Angebots,
+ *                                 im Wortlaut des Anbieters (`1 month`). Leer heisst einmalig. Wird
+ *                                 NIE vom Produkt geerbt, siehe `ServiceProvider::resolveOffer()`.
+ * @property int|null $times — Anzahl der Abbuchungen; `null` ist ein Abo.
+ * @property int|null $trial_days
+ * @property int|null $trial_amount_cent
  * @property string|null $currency
  * @property int|null $compare_at_cent
  * @property string|null $headline
@@ -72,6 +78,9 @@ class Offer extends Model
     {
         return [
             'amount_cent' => 'integer',
+            'times' => 'integer',
+            'trial_days' => 'integer',
+            'trial_amount_cent' => 'integer',
             'compare_at_cent' => 'integer',
             'active' => 'boolean',
             'shown_count' => 'integer',

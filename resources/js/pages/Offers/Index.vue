@@ -41,6 +41,8 @@ const props = defineProps({
 const blank = () => ({
     name: '', handle: '', product: props.products[0]?.value ?? '',
     amount_cent: null, compare_at_cent: null, discount_percent: null, currency: null,
+    // Leer heisst einmalig. Siehe das Feld unter dem Preis.
+    interval: null, times: null, trial_days: null, trial_amount_cent: null,
     headline: '', body: '', button_label: '', image: '',
     slot: 'standalone', bumps: [], active: true, products: [],
     // The standard mail, so that an offer created and saved without ever
@@ -457,6 +459,64 @@ const statusColor = (row) => {
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ t.field_amount_help }}
                         {{ t.field_compare_at_help }}
+                    </p>
+                </div>
+
+                <!-- Der Zahlungsrhythmus. Steht direkt unter dem Preis, weil
+                     er dessen Bedeutung aendert: mit Rhythmus ist der Betrag
+                     oben die Hoehe EINER Rate, nicht der Gesamtpreis. Zwei
+                     Felder, die man getrennt liest, waeren genau die Stelle,
+                     an der jemand 1.500 statt 520 eintraegt.
+
+                     Die drei rechten Felder sind ohne Rhythmus wirkungslos
+                     und werden beim Speichern mit geleert. -->
+                <div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_interval" :error="errors.interval">
+                            <Input
+                                v-model="form.interval"
+                                class="font-mono"
+                                :placeholder="t.field_interval_placeholder"
+                            />
+                        </Field>
+
+                        <Field :label="t.field_times" :error="errors.times">
+                            <Input
+                                :model-value="form.times"
+                                type="number"
+                                min="1"
+                                :placeholder="t.field_times_placeholder"
+                                :disabled="!form.interval"
+                                @update:model-value="form.times = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <Field :label="t.field_trial_days" :error="errors.trial_days">
+                            <Input
+                                :model-value="form.trial_days"
+                                type="number"
+                                min="0"
+                                :disabled="!form.interval"
+                                @update:model-value="form.trial_days = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+
+                        <Field :label="t.field_trial_amount" :error="errors.trial_amount_cent">
+                            <Input
+                                :model-value="form.trial_amount_cent"
+                                type="number"
+                                min="0"
+                                :append="currency"
+                                :disabled="!form.interval"
+                                @update:model-value="form.trial_amount_cent = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t.field_plan_help }}
                     </p>
                 </div>
 

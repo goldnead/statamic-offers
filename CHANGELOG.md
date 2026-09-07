@@ -2,6 +2,44 @@
 
 ## Unveröffentlicht
 
+### Neu: ein Angebot kann seinen eigenen Zahlungsrhythmus nennen
+
+Vier Spalten auf `offers`: `interval`, `times`, `trial_days`, `trial_amount_cent`. Alle
+nullable, `interval` ist der Schalter. Ohne ihn bleibt ein Angebot, was es war: einmalig.
+
+**Damit braucht „dasselbe in drei Raten" kein zweites Produkt mehr.** Bisher hing ein Ratenplan
+am Produkt, und eine Ratenvariante hiess: eine zweite Produktzeile mit denselben Zugängen,
+derselben Steuerangabe und einem anderen Betrag. Zwei Zeilen für eine Sache, jede Pflege
+doppelt. Jetzt: ein Produkt, zwei Angebote („Einmalig", „3 Raten").
+
+Ein Angebot ist „ein Produkt, präsentiert" — und Zahlungsbedingungen sind Präsentation.
+
+### Der Riegel gegen Erben bleibt, und das ist der Punkt
+
+`resolveOffer()` streicht die Plan-Schlüssel des Produkts weiter heraus. Die Begründung von
+damals gilt unverändert: ein Angebot hat oft einen eigenen, niedrigeren Preis, und ein
+geerbter Rhythmus machte daraus stillschweigend einen Dauerauftrag über den Rabatt. „Ein
+Upsell zu 12 € für ein 29-€-Produkt sagt nichts darüber, was der zweite Monat kostet."
+
+Diese Version ist die Antwort auf den Halbsatz „until somebody decides that": **das Angebot
+sagt es selbst.** Steht dort ein `interval`, ist `offers.amount_cent` die **Ratenhöhe** —
+eingetragen von der Person, die den Preis auch sonst setzt, statt aus einem Rabatt geraten.
+
+Ein Angebot mit eigenem Plan erbt daneben auch nichts dazu: die Testphase des Produkts reist
+nicht mit, sonst bekäme ein Ratenkauf 14 Gratistage, die niemand angeboten hat.
+
+### Control Panel
+
+Vier Felder direkt unter dem Preis, weil sie dessen Bedeutung ändern. Anzahl, Testtage und
+Testbetrag sind ohne Rhythmus deaktiviert und werden beim Speichern mit geleert — sonst bleibt
+an einem einmaligen Angebot ein `times = 3` hängen, das niemand sieht und das wirkt, sobald
+jemand später ein Intervall setzt. Bei wiederkehrendem Geld ist das kein Schönheitsfehler.
+
+### Tests
+
+Vier neue in `OfferInheritsProductFactsTest`, direkt neben dem Test, der das Erben verbietet —
+die beiden Regeln gehören nebeneinander gelesen.
+
 ### Einstellungen im Control Panel
 
 Verkäufername, Kontakt, Widerrufsfrist, Widerrufsbelehrung, Verzichtserklärung, der Hinweis für

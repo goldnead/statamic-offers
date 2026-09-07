@@ -147,6 +147,74 @@ class OfferInheritsProductFactsTest extends TestCase
         $this->assertTrue($resolved['digital']);
     }
 
+    /**
+     * Die Gegenseite: was das Angebot **selbst** sagt, gilt.
+     *
+     * Der Riegel oben verhindert einen *geerbten* Rhythmus ueber einen
+     * Rabattpreis — nicht ein Angebot, das seine Zahlungsbedingungen selbst
+     * nennt. Genau das ist die Antwort auf „until somebody decides that":
+     * steht am Angebot ein `interval`, hat jemand entschieden, und
+     * `offers.amount_cent` ist dann die Ratenhoehe.
+     *
+     * Damit braucht „dasselbe in drei Raten" kein zweites Produkt: ein
+     * Produkt, zwei Angebote.
+     */
+    #[Test]
+    public function an_offer_may_declare_its_own_payment_plan(): void
+    {
+        $this->offer(['interval' => '1 month', 'times' => 3, 'amount_cent' => 52000]);
+
+        $resolved = app(Catalogue::class)->find('offer:fruehling-upsell');
+
+        $this->assertSame('1 month', $resolved['interval']);
+        $this->assertSame(3, $resolved['times']);
+
+        // Und der Betrag des Angebots ist die Rate, nicht der Gesamtpreis.
+        $this->assertSame(52000, $resolved['amount_cent']);
+    }
+
+    /**
+     * Der eigene Plan schlaegt den geerbten — und er erbt nichts dazu.
+     *
+     * Ein Produkt mit Monatsabo, ein Angebot mit drei Raten: heraus kommen
+     * drei Raten, und die Testphase des Produkts reist **nicht** mit. Sonst
+     * bekaeme ein Ratenkauf stillschweigend 14 Gratistage, die niemand
+     * angeboten hat.
+     */
+    #[Test]
+    public function the_offers_own_plan_wins_and_inherits_nothing_beside_it(): void
+    {
+        config()->set('statamic-payments.products.mitgliedschaft', [
+            'name' => 'Mitgliedschaft',
+            'amount_cent' => 2900,
+            'digital' => true,
+            'interval' => '1 month',
+            'times' => 12,
+            'trial_days' => 14,
+            'trial_amount_cent' => 100,
+        ]);
+
+        $this->offer(['product' => 'mitgliedschaft', 'interval' => '1 month', 'times' => 3]);
+
+        $resolved = app(Catalogue::class)->find('offer:fruehling-upsell');
+
+        $this->assertSame(3, $resolved['times'], 'Der Plan des Angebots gilt.');
+        $this->assertArrayNotHasKey('trial_days', $resolved, 'Die Testphase des Produkts darf nicht mitreisen.');
+        $this->assertArrayNotHasKey('trial_amount_cent', $resolved);
+    }
+
+    /** Ein leeres Intervall schaltet nichts an. */
+    #[Test]
+    public function a_blank_interval_on_the_offer_changes_nothing(): void
+    {
+        $this->offer(['interval' => '   ', 'times' => 3]);
+
+        $resolved = app(Catalogue::class)->find('offer:fruehling-upsell');
+
+        $this->assertArrayNotHasKey('interval', $resolved);
+        $this->assertArrayNotHasKey('times', $resolved);
+    }
+
     #[Test]
     public function an_offer_for_a_product_that_says_nothing_says_nothing_either(): void
     {
