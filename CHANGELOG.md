@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.8.1 — 2026-09-07
+
+### Behoben: 1.8.0 ließ sich mit einem brand-context installieren, unter dem die Widerrufsbelehrung nicht eingebbar ist
+
+**Wer 1.8.0 installiert hat, aktualisiert.** 1.8.0 deklarierte
+`goldnead/statamic-brand-context: ^1.12`, benutzt auf seiner Einstellungsseite aber an drei
+Stellen den Feldtyp `text`, den es erst ab 1.13.0 gibt: `withdrawal.text`,
+`withdrawal.waiver_text` und `withdrawal.b2b_text`.
+
+Unter brand-context 1.12 fällt ein unbekannter Typ in den Standardzweig. Das heißt für diese
+drei Felder: die Eingabe ist eine einzeilige Box, und die Validierung greift bei 255 Zeichen.
+Eine Widerrufsbelehrung ist ein Absatz von rund tausend Zeichen. Sie wird also abgewiesen —
+und damit genau der Text, für den der Typ gebaut wurde.
+
+Sichtbar wird das nur auf einer Installation, deren `composer.lock` brand-context auf 1.12
+festhält; wo die Auflösung frei ist, zieht sie ohnehin 1.13. Der Fehler steckt deshalb nicht
+im Code, sondern in der Fassungsgrenze, und beide Auflösungen sahen für sich plausibel aus.
+
+Die Grenze steht jetzt auf `^1.13`. **1.8.0 sollte nicht benutzt werden.** Am Verhalten des
+Addons ändert sich sonst nichts, 1.8.1 trägt keine weitere Änderung.
+
 ## 1.8.0 — 2026-09-07
 
 ### Neu: ein Angebot kann seinen eigenen Zahlungsrhythmus nennen
