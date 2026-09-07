@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.8.2 — 2026-09-07
+
+### Behoben: ohne `ext-intl` stand der Preis in der falschen Sprache
+
+`Offer::localise()` fiel ohne die Erweiterung auf `number_format($cent / 100, 2, '.', '')`
+zurück — genau auf das, wovor der Kommentar über `amountLocal()` warnt: „a German page showing
+249.00 is a machine talking". Auf adriangoldner.com fiel es am 07.09.2026 auf. Im Container ist
+`intl` nicht installiert, und in der Kasse stand **„520.00 €"** statt „520,00 €".
+
+Das ist keine Kosmetik. Ein Preis ist eine Pflichtangabe (§ 312j Abs. 2 BGB), und im Deutschen
+trennt der Punkt Tausender — „1.560" liest sich als eintausendfünfhundertsechzig, „1560.00"
+im besten Fall als Fremdkörper.
+
+Der Rückfall kennt jetzt die geläufigen Schreibweisen selbst. Die Liste nennt nur, was sicher
+ist; alles Unbekannte bleibt beim Punkt, weil eine falsch geratene Schreibweise schlechter wäre
+als eine erkennbar fremde.
+
+**Warum es kein Test fand:** auf den Entwicklungsrechnern ist `intl` geladen, im Container
+nicht. Der Zweig, der lief, war der einzige, den kein Test erreichte — und der bestehende Test
+dazu übersprang sich selbst, wenn `intl` fehlte, also genau in der Umgebung, um die es ging.
+Der Rückfall steht deshalb jetzt als eigene Methode (`localiseWithoutIntl()`) da und wird
+direkt geprüft.
+
 ## 1.8.1 — 2026-09-07
 
 ### Behoben: 1.8.0 ließ sich mit einem brand-context installieren, unter dem die Widerrufsbelehrung nicht eingebbar ist

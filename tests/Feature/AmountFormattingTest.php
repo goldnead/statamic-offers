@@ -48,6 +48,35 @@ class AmountFormattingTest extends TestCase
         $this->assertSame('1,249.50', $offer->amountLocal());
     }
 
+    /**
+     * Ohne `ext-intl` bleibt der Preis trotzdem in seiner Sprache.
+     *
+     * **Der Zweig, den kein Test erreichte, war der Zweig, der lief.** Auf
+     * diesem Rechner ist `intl` geladen, im Container von adriangoldner.com
+     * nicht — und dort stand am 07.09.2026 in der Kasse „520.00 €". Der
+     * Rueckfall gab einfach `number_format(..., '.', '')` zurueck, also genau
+     * das, wovor der Kommentar ueber dieser Klasse warnt.
+     *
+     * Deshalb wird hier die Rueckfall-Methode direkt gerufen: welcher Zweig
+     * laeuft, entscheidet die Umgebung, und ein Test darf sich davon nicht
+     * aussuchen lassen, was er prueft.
+     */
+    #[Test]
+    public function without_intl_the_price_still_follows_the_language(): void
+    {
+        $this->assertSame('1.249,50', Offer::localiseWithoutIntl(124950, 'de'));
+        $this->assertSame('1.249,50', Offer::localiseWithoutIntl(124950, 'de_AT'));
+        $this->assertSame('1.249,50', Offer::localiseWithoutIntl(124950, 'de-DE'));
+        $this->assertSame('1,249.50', Offer::localiseWithoutIntl(124950, 'en'));
+
+        // Eine Sprache, ueber die dieses Paket nichts weiss, bekommt keine
+        // geratene Schreibweise, sondern die neutrale.
+        $this->assertSame('1,249.50', Offer::localiseWithoutIntl(124950, 'ja'));
+
+        // Und die Nachkommastellen bleiben, auch wenn sie null sind.
+        $this->assertSame('520,00', Offer::localiseWithoutIntl(52000, 'de'));
+    }
+
     #[Test]
     public function two_decimals_survive_a_round_number(): void
     {

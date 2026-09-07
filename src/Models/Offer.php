@@ -580,22 +580,73 @@ class Offer extends Model
         return self::localise($this->effectiveCompareAtCent());
     }
 
-    /** Without ext-intl there is no locale knowledge, so the dot stays. */
+    /**
+     * Der Betrag, wie ihn ein Mensch dieser Sprache liest.
+     *
+     * Ohne `ext-intl` gibt es kein Gebietswissen — aber eine Handvoll
+     * Schreibweisen kennt dieses Paket selbst, und das ist besser als der
+     * frühere Rückfall auf den englischen Punkt.
+     *
+     * **Warum das keine Kleinigkeit ist.** Der Kommentar über `amountLocal()`
+     * sagt es selbst: „a German page showing 249.00 is a machine talking" —
+     * und genau das lieferte der Rückfall. Auf adriangoldner.com fiel es am
+     * 07.09.2026 auf: im Container ist `intl` nicht installiert, und in der
+     * Kasse stand „520.00 €" statt „520,00 €". Ein Preis ist eine
+     * Pflichtangabe; in einer fremden Schreibweise gedruckt ist er im besten
+     * Fall unschön und im schlechtesten mehrdeutig — im Deutschen trennt der
+     * Punkt Tausender.
+     *
+     * Die Liste ist absichtlich kurz und nennt nur, was sicher ist. Alles
+     * Unbekannte bleibt beim Punkt: eine falsch geratene Schreibweise wäre
+     * schlechter als eine fremde, die als fremd erkennbar ist.
+     */
     public static function localise(?int $cent): ?string
     {
         if ($cent === null) {
             return null;
         }
 
-        if (! class_exists(\NumberFormatter::class)) {
-            return number_format($cent / 100, 2, '.', '');
+        if (class_exists(\NumberFormatter::class)) {
+            $formatter = new \NumberFormatter(app()->getLocale(), \NumberFormatter::DECIMAL);
+            $formatter->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 2);
+            $formatter->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
+
+            $formatiert = $formatter->format($cent / 100);
+
+            if (is_string($formatiert) && $formatiert !== '') {
+                return $formatiert;
+            }
         }
 
-        $formatter = new \NumberFormatter(app()->getLocale(), \NumberFormatter::DECIMAL);
-        $formatter->setAttribute(\NumberFormatter::MIN_FRACTION_DIGITS, 2);
-        $formatter->setAttribute(\NumberFormatter::MAX_FRACTION_DIGITS, 2);
+        return self::localiseWithoutIntl($cent, (string) app()->getLocale());
+    }
 
-        return $formatter->format($cent / 100) ?: number_format($cent / 100, 2, '.', '');
+    /**
+     * Derselbe Betrag ohne `ext-intl`.
+     *
+     * **Eigene Methode, damit ein Test sie erreicht.** Ob die Erweiterung
+     * geladen ist, entscheidet die Umgebung und nicht der Aufrufer; ein Test,
+     * der nur `localise()` ruft, prüft auf einem Rechner mit `intl` genau den
+     * Zweig nicht, der auf dem Server läuft. Genau so blieb der Fehler
+     * unentdeckt: lokal grün, im Container „520.00 €".
+     *
+     * Die Liste nennt nur, was sicher ist. Alles Unbekannte bleibt beim Punkt —
+     * eine falsch geratene Schreibweise wäre schlechter als eine fremde, die
+     * als fremd erkennbar ist.
+     */
+    public static function localiseWithoutIntl(int $cent, string $locale): string
+    {
+        // Sprache, nicht Land: `de_AT` und `de_CH` schreiben die Nachkommastelle
+        // wie `de`, und ein Gebietsschema mit Bindestrich (`de-DE`) kommt vor.
+        $sprache = strtolower(substr(str_replace('-', '_', $locale), 0, 2));
+
+        [$dezimal, $tausender] = match ($sprache) {
+            'de', 'es', 'it', 'nl', 'pt', 'da', 'tr', 'id' => [',', '.'],
+            'fr', 'cs', 'pl', 'sv', 'fi', 'nb', 'no', 'ru', 'uk' => [',', ' '],
+            default => ['.', ','],
+        };
+
+        return number_format($cent / 100, 2, $dezimal, $tausender);
     }
 
     /**
