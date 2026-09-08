@@ -43,6 +43,8 @@ const blank = () => ({
     amount_cent: null, compare_at_cent: null, discount_percent: null, currency: null,
     // Leer heisst einmalig. Siehe das Feld unter dem Preis.
     interval: null, times: null, trial_days: null, trial_amount_cent: null,
+    // Leer heisst „ein Preis". Siehe die Liste unter dem Rhythmus.
+    pricing_options: [],
     headline: '', body: '', button_label: '', image: '',
     slot: 'standalone', bumps: [], active: true, products: [],
     // The standard mail, so that an offer created and saved without ever
@@ -186,6 +188,42 @@ const bumpsError = computed(() => {
 
     return key ? errors.value[key] : null;
 });
+
+/**
+ * Wie `bumpsError`, nur tiefer verschachtelt: der Server meldet eine abgelehnte
+ * Zeile als `pricing_options.1.key`. Die Fehler stehen je Zeile, damit
+ * jemand mit vier Optionen sieht, welche gemeint ist.
+ */
+function optionError(index, field) {
+    return errors.value[`pricing_options.${index}.${field}`] ?? null;
+}
+
+const pricingOptionsError = computed(() => errors.value.pricing_options ?? null);
+
+/**
+ * Der Typ einer Zeile, aus ihren Feldern abgelesen.
+ *
+ * Genau wie auf dem Server ({@see Offer::pricingOptions()}): kein Rhythmus ist
+ * einmalig, ein Rhythmus mit Anzahl sind Raten, ohne Anzahl ein Abo. Ein
+ * eigenes Auswahlfeld daneben waere eine zweite Wahrheit ueber dieselbe Sache,
+ * und die beiden gehen auseinander, sobald jemand nur eines der Felder aendert.
+ */
+function optionType(option) {
+    if (!option.interval) return props.t.pricing_type_once;
+
+    return option.times ? props.t.pricing_type_instalments : props.t.pricing_type_subscription;
+}
+
+function addPricingOption() {
+    form.value.pricing_options = [
+        ...(form.value.pricing_options ?? []),
+        { key: '', label: '', amount_cent: null, interval: null, times: null, trial_days: null, trial_amount_cent: null },
+    ];
+}
+
+function removePricingOption(index) {
+    form.value.pricing_options = form.value.pricing_options.filter((_, i) => i !== index);
+}
 
 function create() {
     editing.value = null;
@@ -518,6 +556,83 @@ const statusColor = (row) => {
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ t.field_plan_help }}
                     </p>
+                </div>
+
+                <!-- Mehrere Zahlweisen an einem Angebot. Steht unter dem
+                     Rhythmus, weil jede Zeile derselbe Feldsatz noch einmal
+                     ist: Betrag, Rhythmus, Anzahl.
+
+                     Der Typ wird nicht gewaehlt, sondern angezeigt. Er folgt
+                     aus Rhythmus und Anzahl, und ein Auswahlfeld daneben
+                     waere die zweite Wahrheit, die irgendwann von der ersten
+                     abweicht. -->
+                <div>
+                    <Subheading :text="t.field_pricing_options" />
+
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t.field_pricing_options_help }}
+                    </p>
+
+                    <Alert v-if="pricingOptionsError" variant="error" class="mt-2" :text="pricingOptionsError" />
+
+                    <div
+                        v-for="(option, index) in form.pricing_options"
+                        :key="index"
+                        class="mt-3 rounded-md border border-gray-300 p-3 dark:border-gray-700"
+                    >
+                        <div class="flex items-center justify-between">
+                            <Badge :text="optionType(option)" />
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                :text="t.pricing_option_remove"
+                                @click="removePricingOption(index)"
+                            />
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-2 gap-4">
+                            <Field :label="t.field_pricing_option_key" :error="optionError(index, 'key')">
+                                <Input v-model="option.key" class="font-mono" placeholder="raten3" />
+                            </Field>
+
+                            <Field :label="t.field_pricing_option_label" :error="optionError(index, 'label')">
+                                <Input v-model="option.label" :placeholder="t.field_pricing_option_label_placeholder" />
+                            </Field>
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-3 gap-4">
+                            <Field :label="t.field_pricing_option_amount" :error="optionError(index, 'amount_cent')">
+                                <Input
+                                    :model-value="option.amount_cent"
+                                    type="number"
+                                    min="1"
+                                    :append="currency"
+                                    @update:model-value="option.amount_cent = $event === '' ? null : Number($event)"
+                                />
+                            </Field>
+
+                            <Field :label="t.field_interval" :error="optionError(index, 'interval')">
+                                <Input
+                                    v-model="option.interval"
+                                    class="font-mono"
+                                    :placeholder="t.field_interval_placeholder"
+                                />
+                            </Field>
+
+                            <Field :label="t.field_times" :error="optionError(index, 'times')">
+                                <Input
+                                    :model-value="option.times"
+                                    type="number"
+                                    min="1"
+                                    :placeholder="t.field_times_placeholder"
+                                    :disabled="!option.interval"
+                                    @update:model-value="option.times = $event === '' ? null : Number($event)"
+                                />
+                            </Field>
+                        </div>
+                    </div>
+
+                    <Button class="mt-3" size="sm" :text="t.pricing_option_add" @click="addPricingOption" />
                 </div>
 
                 <!-- The other way to a price: a share off the catalogue. One

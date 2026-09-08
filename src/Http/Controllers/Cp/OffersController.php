@@ -182,6 +182,27 @@ class OffersController extends CpController
             'times' => ['nullable', 'integer', 'min:1', 'max:60'],
             'trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'trial_amount_cent' => ['nullable', 'integer', 'min:0'],
+
+            // **Mehrere Zahlweisen zur Auswahl in der Kasse.**
+            //
+            // Der Schluessel steht spaeter in einem Handle
+            // (`offer:choiraccelerator:raten3`) und wird dort am letzten
+            // Doppelpunkt abgetrennt. Also gilt hier, was fuer Handles gilt:
+            // Kleinbuchstaben, Ziffern, Strich und Unterstrich, sonst nichts.
+            // Ein Schluessel mit Doppelpunkt wuerde an einer anderen Stelle
+            // getrennt, als er gemeint war, und ein anderes Angebot treffen.
+            'pricing_options' => ['nullable', 'array', 'max:12'],
+            'pricing_options.*.key' => ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9_-]*$/'],
+            'pricing_options.*.label' => ['nullable', 'string', 'max:191'],
+            // Bei einer Option **immer** ein eigener Betrag: sie ist die
+            // Antwort auf „was kostet diese Zahlweise", und ein Rueckfall auf
+            // den Katalogpreis waere ein Preis, den niemand fuer sie gesetzt
+            // hat. Bei `raten` und `abo` ist es die Ratenhoehe.
+            'pricing_options.*.amount_cent' => ['required', 'integer', 'min:1'],
+            'pricing_options.*.interval' => ['nullable', 'string', 'max:32'],
+            'pricing_options.*.times' => ['nullable', 'integer', 'min:1', 'max:60'],
+            'pricing_options.*.trial_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'pricing_options.*.trial_amount_cent' => ['nullable', 'integer', 'min:0'],
             'compare_at_cent' => ['nullable', 'integer', 'min:1'],
             // A percentage off the catalogue price. 1 to 99: 0 is no discount
             // and 100 is a gift, and both are better said in words than typed
@@ -376,7 +397,61 @@ class OffersController extends CpController
             $data['products'] = null;
         }
 
+        // Die Zahlweisen in genau der Form, in der der Resolver sie liest.
+        //
+        // Gesaeubert wird hier, nicht erst beim Lesen: `pricingOptions()` wirft
+        // eine halbe Zeile still weg, und wer sie im Formular eingetragen hat,
+        // soll nicht erst in der Kasse merken, dass sie fehlt. Was hier
+        // geschrieben wird, ist das, was dort ankommt.
+        $optionen = [];
+        $gesehen = [];
+
+        foreach ((array) ($data['pricing_options'] ?? []) as $zeile) {
+            if (! is_array($zeile)) {
+                continue;
+            }
+
+            $key = trim((string) ($zeile['key'] ?? ''));
+
+            // Ein doppelter Schluessel ist keine zweite Option, sondern zwei
+            // Preise fuer dasselbe `offer:x:key` — und der Resolver nimmt den
+            // ersten. Also steht auch nur der in der Spalte.
+            if ($key === '' || isset($gesehen[$key])) {
+                continue;
+            }
+
+            $gesehen[$key] = true;
+
+            $intervall = trim((string) ($zeile['interval'] ?? ''));
+            $label = trim((string) ($zeile['label'] ?? ''));
+
+            $optionen[] = array_filter([
+                'key' => $key,
+                'label' => $label === '' ? null : $label,
+                'amount_cent' => (int) $zeile['amount_cent'],
+                // Ohne Rhythmus faellt alles weg, was nur mit einem Sinn
+                // ergibt. Dieselbe Regel wie fuer das Angebot selbst zwanzig
+                // Zeilen weiter oben: ein `times = 3` an einer einmaligen
+                // Zahlweise wirkt in dem Moment, in dem jemand spaeter ein
+                // Intervall setzt, und niemand hat es dann eingetragen.
+                'interval' => $intervall === '' ? null : $intervall,
+                'times' => $intervall === '' ? null : self::ganzzahlOderNull($zeile['times'] ?? null),
+                'trial_days' => $intervall === '' ? null : self::ganzzahlOderNull($zeile['trial_days'] ?? null),
+                'trial_amount_cent' => $intervall === '' ? null : self::ganzzahlOderNull($zeile['trial_amount_cent'] ?? null),
+            ], static fn ($wert): bool => $wert !== null);
+        }
+
+        // Leer heisst „ein Preis", und das gehoert als `null` in die Spalte —
+        // aus demselben Grund wie bei `products` darueber.
+        $data['pricing_options'] = $optionen === [] ? null : $optionen;
+
         return $data;
+    }
+
+    /** Eine Zahl, oder nichts. `''` aus einem leeren Formularfeld ist nichts. */
+    protected static function ganzzahlOderNull(mixed $wert): ?int
+    {
+        return $wert === null || $wert === '' ? null : (int) $wert;
     }
 
     /**
@@ -581,6 +656,17 @@ class OffersController extends CpController
             'field_interval_placeholder' => __('statamic-offers::messages.field_interval_placeholder'),
             'field_times' => __('statamic-offers::messages.field_times'),
             'field_times_placeholder' => __('statamic-offers::messages.field_times_placeholder'),
+            'field_pricing_options' => __('statamic-offers::messages.field_pricing_options'),
+            'field_pricing_options_help' => __('statamic-offers::messages.field_pricing_options_help'),
+            'field_pricing_option_key' => __('statamic-offers::messages.field_pricing_option_key'),
+            'field_pricing_option_label' => __('statamic-offers::messages.field_pricing_option_label'),
+            'field_pricing_option_label_placeholder' => __('statamic-offers::messages.field_pricing_option_label_placeholder'),
+            'field_pricing_option_amount' => __('statamic-offers::messages.field_pricing_option_amount'),
+            'pricing_option_add' => __('statamic-offers::messages.pricing_option_add'),
+            'pricing_option_remove' => __('statamic-offers::messages.pricing_option_remove'),
+            'pricing_type_once' => __('statamic-offers::messages.pricing_type_once'),
+            'pricing_type_instalments' => __('statamic-offers::messages.pricing_type_instalments'),
+            'pricing_type_subscription' => __('statamic-offers::messages.pricing_type_subscription'),
             'field_trial_days' => __('statamic-offers::messages.field_trial_days'),
             'field_trial_amount' => __('statamic-offers::messages.field_trial_amount'),
             'field_amount_help' => __('statamic-offers::messages.field_amount_help'),

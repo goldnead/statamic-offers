@@ -162,12 +162,39 @@ class ServiceProvider extends AddonServiceProvider
      */
     protected function resolveOffer(string $handle, string $prefix): ?array
     {
+        // `offer:choiraccelerator:raten3` — das Angebot, und darin die
+        // gewaehlte Zahlweise.
+        //
+        // Getrennt wird am **letzten** Doppelpunkt, nicht am ersten: der
+        // Praefix ist schon ab, und ein Angebots-Handle ist ein Slug ohne
+        // Doppelpunkt. Der Schluessel steht hinten, weil das Angebot ohne ihn
+        // dieselbe Zeichenkette bleibt wie vorher — `offer:choiraccelerator`
+        // loest heute und morgen dasselbe auf, und eine Zahlung von gestern
+        // findet ihr Angebot unveraendert wieder.
+        $rest = substr($handle, strlen($prefix));
+        $optionKey = null;
+
+        if (($trenner = strrpos($rest, ':')) !== false) {
+            $optionKey = substr($rest, $trenner + 1);
+            $rest = substr($rest, 0, $trenner);
+        }
 
         $offer = Offer::query()
-            ->where('handle', substr($handle, strlen($prefix)))
+            ->where('handle', $rest)
             ->first();
 
         if (! $offer || ! $offer->isSellable()) {
+            return null;
+        }
+
+        // Ein Schluessel, den dieses Angebot nicht fuehrt, ist **nichts**, und
+        // nicht „dann eben der Grundpreis". Eine geloeschte Option, ein alter
+        // Link, ein Tippfehler im Formular: in allen drei Faellen waere ein
+        // stiller Rueckfall eine Abbuchung ueber einen Betrag, den niemand
+        // ausgewaehlt hat. `Checkout::start()` verweigert bei `null` laut.
+        $option = $optionKey === null ? null : $offer->pricingOption($optionKey);
+
+        if ($optionKey !== null && $option === null) {
             return null;
         }
 
@@ -231,7 +258,13 @@ class ServiceProvider extends AddonServiceProvider
         // Damit braucht „dasselbe in drei Raten" kein zweites Produkt mehr:
         // ein Produkt, zwei Angebote. Zahlungsbedingungen sind Praesentation,
         // und Praesentation ist, wofuer es Angebote gibt.
-        $intervall = is_string($offer->interval) ? trim($offer->interval) : '';
+        // **Eine gewaehlte Zahlweise ersetzt den Rhythmus des Angebots, sie
+        // ergaenzt ihn nicht.** Sonst erbte eine als `einmalig` ausgewiesene
+        // Option das `interval` des Angebots und wuerde monatlich abgebucht,
+        // obwohl in der Kasse „einmalig" stand.
+        $intervall = $option !== null
+            ? (string) ($option['interval'] ?? '')
+            : (is_string($offer->interval) ? trim($offer->interval) : '');
 
         if ($intervall !== '') {
             $product['interval'] = $intervall;
@@ -240,8 +273,10 @@ class ServiceProvider extends AddonServiceProvider
             // fehlendes `times` selbst als `null` — also als Abo — und ein
             // ausgeschriebenes `null` waere dieselbe Aussage mit mehr Zeichen.
             foreach (['times', 'trial_days', 'trial_amount_cent'] as $feld) {
-                if ($offer->{$feld} !== null) {
-                    $product[$feld] = (int) $offer->{$feld};
+                $wert = $option !== null ? ($option[$feld] ?? null) : $offer->{$feld};
+
+                if ($wert !== null) {
+                    $product[$feld] = (int) $wert;
                 }
             }
         }
@@ -291,8 +326,20 @@ class ServiceProvider extends AddonServiceProvider
         // duplicate keys. The other way round the product's name and full price
         // would win over the offer's, which is the whole point of an offer.
         return [
+            // Der Name bleibt der des Angebots, auch bei einer Option.
+            //
+            // Die Rechnungszeile sagt ohnehin „Rate n von m (Gesamt X)" dazu
+            // ({@see Subscriptions::instalmentLine()}), und das ist die
+            // Zuordnung, die eine Buchhaltung braucht. Die Bezeichnung der
+            // Option („3 Raten") ist Kassensprache: sie hilft beim Auswaehlen
+            // und hat auf einem Beleg nichts verloren, den jemand in zwei
+            // Jahren gegen seine Kontoauszuege haelt.
             'name' => $offer->name,
-            'amount_cent' => $offer->effectiveAmountCent(),
+            // Bei einer Option **ihr** Betrag, und das ist die Ratenhoehe,
+            // nicht der Gesamtpreis. Genauso, wie `amount_cent` am Angebot
+            // seit 1.8.0 die Ratenhoehe ist, sobald ein `interval` daneben
+            // steht: eine Regel, nicht zwei.
+            'amount_cent' => $option !== null ? $option['amount_cent'] : $offer->effectiveAmountCent(),
             'currency' => $offer->currency(),
             // What the payment line will remember it was sold as. An offer
             // renamed next year must not rewrite an old order.

@@ -45,6 +45,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $available_from
  * @property Carbon|null $available_until
  * @property list<string>|null $bumps
+ * @property array<mixed>|null $pricing_options — rohes JSON, mehrere
+ *                                              Zahlweisen zur Auswahl in der Kasse. Leer heisst „ein Preis".
+ *                                              Gelesen wird immer ueber {@see self::pricingOptions()}.
  * @property string $slot
  * @property bool $active
  * @property int $shown_count
@@ -72,6 +75,15 @@ class Offer extends Model
     /** Send nothing. Only ever because somebody chose it. */
     public const CONFIRMATION_NONE = 'none';
 
+    /** Einmal zahlen, fertig. */
+    public const PRICING_ONCE = 'einmalig';
+
+    /** Feste Anzahl Abbuchungen, danach ist es bezahlt. */
+    public const PRICING_INSTALMENTS = 'raten';
+
+    /** Rhythmus ohne Ende, bis gekuendigt wird. */
+    public const PRICING_SUBSCRIPTION = 'abo';
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -87,6 +99,7 @@ class Offer extends Model
             'accepted_count' => 'integer',
             'meta' => 'array',
             'bumps' => 'array',
+            'pricing_options' => 'array',
             'products' => 'array',
             'withdrawal_days' => 'integer',
             'withdrawal_checkbox_required' => 'boolean',
@@ -152,6 +165,126 @@ class Offer extends Model
     public static function confirmationModes(): array
     {
         return [self::CONFIRMATION_DEFAULT, self::CONFIRMATION_CUSTOM, self::CONFIRMATION_NONE];
+    }
+
+    /** @return list<string> */
+    public static function pricingTypes(): array
+    {
+        return [self::PRICING_ONCE, self::PRICING_INSTALMENTS, self::PRICING_SUBSCRIPTION];
+    }
+
+    /**
+     * Die Zahlweisen, unter denen dieses Angebot gekauft werden kann.
+     *
+     * Normalisiert und **gefiltert**, nicht durchgereicht. Was in der Spalte
+     * steht, hat ein Formular geschrieben — aber auch ein Import, ein Seed
+     * oder eine aeltere Fassung dieses Codes koennte es geschrieben haben, und
+     * eine halbe Option ist hier gefaehrlicher als keine: eine Zeile ohne
+     * `amount_cent` waere ein Preis, den irgendwer spaeter zu 0 liest, und eine
+     * `raten`-Zeile ohne `times` waere ein unbefristetes Abo, das als
+     * Ratenzahlung beworben wurde.
+     *
+     * Deshalb faellt heraus, was nicht vollstaendig ist. Wer eine Option
+     * anlegt und sie nicht in der Kasse sieht, sucht im Formular; wer eine
+     * halbe verkauft, merkt es an der Abbuchung.
+     *
+     * @return list<array{key: string, label: string, type: string, amount_cent: int, interval: string|null, times: int|null, trial_days: int|null, trial_amount_cent: int|null}>
+     */
+    public function pricingOptions(): array
+    {
+        $optionen = [];
+        $gesehen = [];
+
+        // `(array)` statt `is_array()`: `null` wird zu `[]`, und alles andere
+        // zu einer Liste, deren Zeilen die Pruefung darunter ohnehin nicht
+        // besteht. Eine Spalte, die von Hand oder aus einem Import beschrieben
+        // wurde, kann alles enthalten.
+        foreach ((array) $this->pricing_options as $zeile) {
+            if (! is_array($zeile)) {
+                continue;
+            }
+
+            $key = is_string($zeile['key'] ?? null) ? trim($zeile['key']) : '';
+
+            // Der Schluessel steht in einem Handle (`offer:x:raten3`), also
+            // gilt dort, was fuer Handles gilt: keine Doppelpunkte, keine
+            // Leerzeichen, nichts, was den Resolver spaeter anders trennt, als
+            // es hier gemeint war.
+            if (preg_match('/^[a-z0-9][a-z0-9_-]*$/', $key) !== 1 || isset($gesehen[$key])) {
+                continue;
+            }
+
+            $betrag = $zeile['amount_cent'] ?? null;
+            $betrag = is_numeric($betrag) ? (int) $betrag : null;
+
+            if ($betrag === null || $betrag < 1) {
+                continue;
+            }
+
+            $intervall = is_string($zeile['interval'] ?? null) ? trim($zeile['interval']) : '';
+            $anzahl = $zeile['times'] ?? null;
+            $anzahl = is_numeric($anzahl) && (int) $anzahl > 0 ? (int) $anzahl : null;
+
+            // Der Typ wird **abgeleitet**, nicht geglaubt. Er ist die
+            // Zusammenfassung von `interval` und `times`, und zwei Wahrheiten
+            // ueber dieselbe Sache gehen irgendwann auseinander: eine Zeile
+            // `type: einmalig` mit einem `interval` daneben wuerde je nach
+            // Leser einmal oder ewig abgebucht.
+            if ($intervall === '') {
+                $typ = self::PRICING_ONCE;
+                $anzahl = null;
+            } else {
+                $typ = $anzahl === null ? self::PRICING_SUBSCRIPTION : self::PRICING_INSTALMENTS;
+            }
+
+            $gesehen[$key] = true;
+
+            $optionen[] = [
+                'key' => $key,
+                'label' => is_string($zeile['label'] ?? null) && trim($zeile['label']) !== ''
+                    ? trim($zeile['label'])
+                    : $key,
+                'type' => $typ,
+                'amount_cent' => $betrag,
+                'interval' => $intervall === '' ? null : $intervall,
+                'times' => $anzahl,
+                'trial_days' => $intervall === '' ? null : self::positiveOrNull($zeile['trial_days'] ?? null),
+                'trial_amount_cent' => $intervall === '' ? null : self::zeroOrMore($zeile['trial_amount_cent'] ?? null),
+            ];
+        }
+
+        return $optionen;
+    }
+
+    /**
+     * Eine einzelne Zahlweise, oder null.
+     *
+     * **Null statt Rueckfall auf den Grundpreis.** Ein unbekannter Schluessel
+     * kommt aus einem Formular, einem alten Link oder einer geloeschten Option;
+     * in allen drei Faellen ist „dann eben der volle Preis" eine Abbuchung, die
+     * niemand ausgewaehlt hat.
+     *
+     * @return array{key: string, label: string, type: string, amount_cent: int, interval: string|null, times: int|null, trial_days: int|null, trial_amount_cent: int|null}|null
+     */
+    public function pricingOption(string $key): ?array
+    {
+        foreach ($this->pricingOptions() as $option) {
+            if ($option['key'] === $key) {
+                return $option;
+            }
+        }
+
+        return null;
+    }
+
+    protected static function positiveOrNull(mixed $wert): ?int
+    {
+        return is_numeric($wert) && (int) $wert > 0 ? (int) $wert : null;
+    }
+
+    protected static function zeroOrMore(mixed $wert): ?int
+    {
+        return is_numeric($wert) && (int) $wert >= 0 ? (int) $wert : null;
     }
 
     /**

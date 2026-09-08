@@ -91,6 +91,11 @@ class ListedOffer extends JsonResource
                 'times' => $this->times,
                 'trial_days' => $this->trial_days,
                 'trial_amount_cent' => $this->trial_amount_cent,
+                // Normalisiert, nicht roh: das Formular soll dieselben Zeilen
+                // zurueckbekommen, die die Kasse zeigt. Eine halbe Zeile, die
+                // der Resolver ohnehin wegwirft, im Formular stehen zu lassen
+                // hiesse, sie bei jedem Speichern erneut zu bestaetigen.
+                'pricing_options' => $this->resource->pricingOptions(),
                 'compare_at_cent' => $this->compare_at_cent,
                 'discount_percent' => $this->discount_percent,
                 'quantity_limit' => $this->quantity_limit,
