@@ -2,277 +2,278 @@
 
 ## 1.8.2 — 2026-09-07
 
-### Behoben: ohne `ext-intl` stand der Preis in der falschen Sprache
+### Fixed: without `ext-intl` the price stood in the wrong language
 
-`Offer::localise()` fiel ohne die Erweiterung auf `number_format($cent / 100, 2, '.', '')`
-zurück — genau auf das, wovor der Kommentar über `amountLocal()` warnt: „a German page showing
-249.00 is a machine talking". Auf adriangoldner.com fiel es am 07.09.2026 auf. Im Container ist
-`intl` nicht installiert, und in der Kasse stand **„520.00 €"** statt „520,00 €".
+Without the extension `Offer::localise()` fell back to `number_format($cent / 100, 2, '.', '')` —
+onto exactly what the comment above `amountLocal()` warns about: "a German page showing 249.00 is
+a machine talking". It surfaced on adriangoldner.com on 2026-09-07. In the container `intl` is
+not installed, and the checkout read **"520.00 €"** instead of "520,00 €".
 
-Das ist keine Kosmetik. Ein Preis ist eine Pflichtangabe (§ 312j Abs. 2 BGB), und im Deutschen
-trennt der Punkt Tausender — „1.560" liest sich als eintausendfünfhundertsechzig, „1560.00"
-im besten Fall als Fremdkörper.
+That is not cosmetics. A price is mandatory information (§ 312j Abs. 2 BGB), and in German the
+dot separates thousands — "1.560" reads as one thousand five hundred and sixty, "1560.00" at
+best as a foreign body.
 
-Der Rückfall kennt jetzt die geläufigen Schreibweisen selbst. Die Liste nennt nur, was sicher
-ist; alles Unbekannte bleibt beim Punkt, weil eine falsch geratene Schreibweise schlechter wäre
-als eine erkennbar fremde.
+The fallback now knows the common notations itself. The list names only what is certain;
+everything unknown stays with the dot, because a wrongly guessed notation would be worse than a
+recognisably foreign one.
 
-**Warum es kein Test fand:** auf den Entwicklungsrechnern ist `intl` geladen, im Container
-nicht. Der Zweig, der lief, war der einzige, den kein Test erreichte — und der bestehende Test
-dazu übersprang sich selbst, wenn `intl` fehlte, also genau in der Umgebung, um die es ging.
-Der Rückfall steht deshalb jetzt als eigene Methode (`localiseWithoutIntl()`) da und wird
-direkt geprüft.
+**Why no test found it:** on the development machines `intl` is loaded, in the container it is
+not. The branch that ran was the only one no test reached — and the existing test for it skipped
+itself when `intl` was missing, that is, in exactly the environment at issue. The fallback
+therefore now stands as a method of its own (`localiseWithoutIntl()`) and is checked directly.
 
 ## 1.8.1 — 2026-09-07
 
-### Behoben: 1.8.0 ließ sich mit einem brand-context installieren, unter dem die Widerrufsbelehrung nicht eingebbar ist
+### Fixed: 1.8.0 could be installed with a brand-context under which the withdrawal notice cannot be entered
 
-**Wer 1.8.0 installiert hat, aktualisiert.** 1.8.0 deklarierte
-`goldnead/statamic-brand-context: ^1.12`, benutzt auf seiner Einstellungsseite aber an drei
-Stellen den Feldtyp `text`, den es erst ab 1.13.0 gibt: `withdrawal.text`,
-`withdrawal.waiver_text` und `withdrawal.b2b_text`.
+**Anyone who installed 1.8.0 should update.** 1.8.0 declared
+`goldnead/statamic-brand-context: ^1.12`, but on its settings page it uses the fieldtype `text`
+in three places, and that type does not exist before 1.13.0: `withdrawal.text`,
+`withdrawal.waiver_text` and `withdrawal.b2b_text`.
 
-Unter brand-context 1.12 fällt ein unbekannter Typ in den Standardzweig. Das heißt für diese
-drei Felder: die Eingabe ist eine einzeilige Box, und die Validierung greift bei 255 Zeichen.
-Eine Widerrufsbelehrung ist ein Absatz von rund tausend Zeichen. Sie wird also abgewiesen —
-und damit genau der Text, für den der Typ gebaut wurde.
+Under brand-context 1.12 an unknown type falls into the default branch. For these three fields
+that means: the input is a single-line box, and validation bites at 255 characters. A withdrawal
+notice (Widerrufsbelehrung) is a paragraph of about a thousand characters. So it is refused —
+and with it exactly the text the type was built for.
 
-Sichtbar wird das nur auf einer Installation, deren `composer.lock` brand-context auf 1.12
-festhält; wo die Auflösung frei ist, zieht sie ohnehin 1.13. Der Fehler steckt deshalb nicht
-im Code, sondern in der Fassungsgrenze, und beide Auflösungen sahen für sich plausibel aus.
+This becomes visible only on an installation whose `composer.lock` pins brand-context to 1.12;
+where resolution is free it pulls 1.13 anyway. The fault therefore does not lie in the code but
+in the version boundary, and both resolutions looked plausible on their own.
 
-Die Grenze steht jetzt auf `^1.13`. **1.8.0 sollte nicht benutzt werden.** Am Verhalten des
-Addons ändert sich sonst nichts, 1.8.1 trägt keine weitere Änderung.
+The boundary now stands at `^1.13`. **1.8.0 should not be used.** Nothing else about the addon's
+behaviour changes; 1.8.1 carries no further change.
 
 ## 1.8.0 — 2026-09-07
 
-### Neu: ein Angebot kann seinen eigenen Zahlungsrhythmus nennen
+### New: an offer can name a payment plan of its own
 
-Vier Spalten auf `offers`: `interval`, `times`, `trial_days`, `trial_amount_cent`. Alle
-nullable, `interval` ist der Schalter. Ohne ihn bleibt ein Angebot, was es war: einmalig.
+Four columns on `offers`: `interval`, `times`, `trial_days`, `trial_amount_cent`. All nullable,
+`interval` is the switch. Without it an offer stays what it was: one-off.
 
-**Damit braucht „dasselbe in drei Raten" kein zweites Produkt mehr.** Bisher hing ein Ratenplan
-am Produkt, und eine Ratenvariante hiess: eine zweite Produktzeile mit denselben Zugängen,
-derselben Steuerangabe und einem anderen Betrag. Zwei Zeilen für eine Sache, jede Pflege
-doppelt. Jetzt: ein Produkt, zwei Angebote („Einmalig", „3 Raten").
+**With this, "the same thing in three instalments" no longer needs a second product.** Until now
+an instalment plan hung on the product, and an instalment variant meant a second product row with
+the same grants, the same tax statement and a different amount. Two rows for one thing, every
+piece of maintenance twice. Now: one product, two offers ("One-off", "3 instalments").
 
-Ein Angebot ist „ein Produkt, präsentiert" — und Zahlungsbedingungen sind Präsentation.
+An offer is "a product, presented" — and payment terms are presentation.
 
-### Der Riegel gegen Erben bleibt, und das ist der Punkt
+### The bar against inheriting stays, and that is the point
 
-`resolveOffer()` streicht die Plan-Schlüssel des Produkts weiter heraus. Die Begründung von
-damals gilt unverändert: ein Angebot hat oft einen eigenen, niedrigeren Preis, und ein
-geerbter Rhythmus machte daraus stillschweigend einen Dauerauftrag über den Rabatt. „Ein
-Upsell zu 12 € für ein 29-€-Produkt sagt nichts darüber, was der zweite Monat kostet."
+`resolveOffer()` still strips out the product's plan keys. The reasoning from back then holds
+unchanged: an offer often has a lower price of its own, and an inherited plan silently turned
+that into a standing order at the discount. "An upsell at 12 € for a 29 € product says nothing
+about what the second month costs."
 
-Diese Version ist die Antwort auf den Halbsatz „until somebody decides that": **das Angebot
-sagt es selbst.** Steht dort ein `interval`, ist `offers.amount_cent` die **Ratenhöhe** —
-eingetragen von der Person, die den Preis auch sonst setzt, statt aus einem Rabatt geraten.
+This version is the answer to the half-sentence "until somebody decides that": **the offer says
+it itself.** If an `interval` stands there, `offers.amount_cent` is the **instalment amount** —
+entered by the person who sets the price anyway, rather than guessed from a discount.
 
-Ein Angebot mit eigenem Plan erbt daneben auch nichts dazu: die Testphase des Produkts reist
-nicht mit, sonst bekäme ein Ratenkauf 14 Gratistage, die niemand angeboten hat.
+An offer with a plan of its own inherits nothing on top of it either: the product's trial does
+not travel along, otherwise an instalment purchase would get 14 free days nobody offered.
 
 ### Control Panel
 
-Vier Felder direkt unter dem Preis, weil sie dessen Bedeutung ändern. Anzahl, Testtage und
-Testbetrag sind ohne Rhythmus deaktiviert und werden beim Speichern mit geleert — sonst bleibt
-an einem einmaligen Angebot ein `times = 3` hängen, das niemand sieht und das wirkt, sobald
-jemand später ein Intervall setzt. Bei wiederkehrendem Geld ist das kein Schönheitsfehler.
+Four fields directly below the price, because they change its meaning. Count, trial days and
+trial amount are disabled without an interval and are cleared along with it on save — otherwise a
+`times = 3` stays hanging on a one-off offer, which nobody sees and which takes effect as soon as
+somebody later sets an interval. Where recurring money is involved that is not a blemish.
 
 ### Tests
 
-Vier neue in `OfferInheritsProductFactsTest`, direkt neben dem Test, der das Erben verbietet —
-die beiden Regeln gehören nebeneinander gelesen.
+Four new ones in `OfferInheritsProductFactsTest`, right beside the test that forbids inheriting —
+the two rules belong side by side.
 
-### Einstellungen im Control Panel
+### Settings in the Control Panel
 
-Verkäufername, Kontakt, Widerrufsfrist, Widerrufsbelehrung, Verzichtserklärung, der Hinweis für
-Geschäftskäufer, das Pflicht-Häkchen und das Zählen der Einblendungen stehen unter
-**Einstellungen → Addon-Einstellungen**. Bisher waren es Paket-Vorgaben in
-`config/statamic-offers.php`: die Belehrung wird ausdrücklich als anwaltlich zu prüfender Entwurf
-ausgeliefert, und wer sie prüfen ließ, konnte sie danach nur mit Dateizugriff ändern.
+Seller name, contact, withdrawal period, the withdrawal notice (Widerrufsbelehrung), the waiver
+declaration (Verzichtserklärung), the note for business buyers, the mandatory checkbox and the
+counting of impressions sit under **Settings → Addon Settings**. Until now they were package
+defaults in `config/statamic-offers.php`: the notice ships explicitly as a draft to be reviewed by
+a lawyer, and whoever had it reviewed could then change it only with file access.
 
-Bildschirm, Speicher, Validierung und Rechteprüfung stellt `goldnead/statamic-brand-context`
-(neue Abhängigkeit, ab 1.12). Gespeichert werden nur Abweichungen, alles andere folgt weiter der
-Config-Datei, und die Werte liegen je Marke. Neues Recht: `manage offers settings`; die
-bestehenden Utility-Rechte bleiben unverändert.
+Screen, storage, validation and permission check are provided by
+`goldnead/statamic-brand-context` (a new dependency, from 1.12 on). Only deviations are stored,
+everything else still follows the config file, and the values are held per brand. New permission:
+`manage offers settings`; the existing utility permissions stay unchanged.
 
-Die Widerrufsbelehrung nutzt den mehrzeiligen Feldtyp `text` der Schicht. **Er ist in
-brand-context 1.12.0 noch nicht enthalten** — bis zum nächsten Tag dort fällt das Feld auf
-`string` zurück und die Validierung schneidet bei 255 Zeichen ab.
+The withdrawal notice uses the layer's multi-line fieldtype `text`. **It is not yet contained in
+brand-context 1.12.0** — until the next release over there the field falls back to `string` and
+validation cuts off at 255 characters.
 
-`checkout_fields` bleibt in der Config: eine Feldbibliothek mit Beschriftung, Typ und Regeln je
-Eintrag passt in kein einzelnes Formularfeld. Die Einstellungsseite sagt das in der
-Gruppenbeschreibung, statt es zu verschweigen.
+`checkout_fields` stays in the config: a field library with a label, a type and rules per entry
+fits into no single form field. The settings page says so in the group description instead of
+keeping quiet about it.
 
 ## 1.7.0 — 2026-09-05
 
-Ein Befund aus Adrians Durchgang vom 03.09.2026 (F36), dazu ein Testfehler, der nur auf PHP 8.2
-auftrat.
+One finding from Adrian's pass of 2026-09-03 (F36), plus a test failure that only occurred on
+PHP 8.2.
 
-### Angebote und Gutscheine im Verkaufs-Abschnitt
+### Offers and coupons in the sales section
 
-Beide Bildschirme sind als Statamic-Utilities registriert und standen unter „Hilfsmittel", zwischen
-Cache und PHP-Info. Jetzt hängen sie im Verkaufs-Abschnitt, den `statamic-payments` mit
-`Cp\SuiteNav::section()` benennt: derselbe Abschnitt wie Zahlungen, Produkte und Funnels. Ein
-eigener String hier wäre ein zweiter Abschnitt mit fast demselben Namen, denn Statamic übersetzt
-Abschnittsnamen nicht.
+Both screens are registered as Statamic utilities and sat under "Utilities", between Cache and
+PHP Info. They now hang in the sales section that `statamic-payments` names with
+`Cp\SuiteNav::section()`: the same section as Payments, Products and Funnels. A string of our own
+here would be a second section with almost the same name, because Statamic does not translate
+section names.
 
-Route und Recht bleiben. Die Einträge unter „Hilfsmittel" werden ausgehängt, sonst stünde jeder
-Bildschirm zweimal da; so war es im ersten Anlauf vom 04.09.
+Route and permission stay. The entries under "Utilities" are unhooked, otherwise each screen
+would stand there twice; that is how it was in the first attempt on 09-04.
 
-`Cp\SuiteNav` gibt es erst seit `goldnead/statamic-payments` 1.18.0. Der Aufruf steht deshalb
-hinter `class_exists()`, wie in `statamic-booking`: mit älterem payments bekommen beide
-Bildschirme einen eigenen Abschnitt „Angebote" statt eines `Class not found` beim Aufbau der
-ganzen CP-Navigation. Den gemeinsamen Verkaufs-Abschnitt gibt es ab payments 1.18.0.
+`Cp\SuiteNav` only exists from `goldnead/statamic-payments` 1.18.0 on. The call therefore sits
+behind `class_exists()`, as in `statamic-booking`: with an older payments both screens get a
+section "Offers" of their own instead of a `Class not found` while the whole CP navigation is
+being built. The shared sales section exists from payments 1.18.0 on.
 
-### Constraint: payments ab 1.10
+### Constraint: payments from 1.10
 
-`goldnead/statamic-payments` verlangt jetzt `^1.10` statt `^1.6`. Die Umsatzspalte rechnet netto
-über `payment_items.discount_cent` (payments 1.4.0) und `payments.refunded_cent`, und Letzteres
-gibt es samt `Support\Refunds` erst seit payments 1.10.0. Mit 1.6 bis 1.9 blieb die Spalte brutto
-und das prefer-lowest-Bein der CI war rot. Der Constraint sagt jetzt, was der Code braucht.
+`goldnead/statamic-payments` now requires `^1.10` instead of `^1.6`. The turnover column
+calculates net through `payment_items.discount_cent` (payments 1.4.0) and
+`payments.refunded_cent`, and the latter, together with `Support\Refunds`, exists only from
+payments 1.10.0 on. With 1.6 to 1.9 the column stayed gross and the prefer-lowest leg of the CI
+was red. The constraint now says what the code needs.
 
-### Kein `Request::get()` mehr in den Listings
+### No more `Request::get()` in the listings
 
-`OffersController` und `CouponsController` lasen Suche, Seitengröße und Sortierung über
-`$request->get()`. Symfony http-foundation 7.4 hat die Methode als veraltet markiert, und mit dem
-ältesten erlaubten Laravel 12 landet die Warnung im Log; in der Suite, die das Log stellvertretend
-prüft, war das ein Fehler. Jetzt `$request->input()`, gleiche Quelle, kein Hinweis.
+`OffersController` and `CouponsController` read search, page size and sorting through
+`$request->get()`. Symfony http-foundation 7.4 has marked the method deprecated, and with the
+oldest permitted Laravel 12 the warning lands in the log; in the suite, which checks the log by
+proxy, that counted as a failure. Now `$request->input()`, same source, no notice.
 
-### Testsuite auf PHP 8.2
+### Test suite on PHP 8.2
 
-`ConfirmationMailFieldTest` legte die Fassade des Schwester-Pakets `statamic-email-templates` per
-`class_alias()` auf `\stdClass`. Das erlaubt PHP erst ab 8.3; auf 8.2 warf jeder Test mit
-Vorlagen einen `ValueError`, das 8.2-Bein der Matrix war seit diesem Test rot. Der Alias zeigt
-jetzt auf eine eigene leere Klasse (`Tests\Support\EmailTemplatesFacadeStandIn`). Betroffen war
-nur die Suite, nicht das Paket.
+`ConfirmationMailFieldTest` aliased the facade of the sister package `statamic-email-templates`
+onto `\stdClass` with `class_alias()`. PHP only allows that from 8.3 on; on 8.2 every test
+involving templates threw a `ValueError`, and the 8.2 leg of the matrix had been red since that
+test. The alias now points at an empty class of its own
+(`Tests\Support\EmailTemplatesFacadeStandIn`). Only the suite was affected, not the package.
 
 ## 1.6.0 — 2026-09-02
 
-Sieben Befunde aus dem Suite-Register vom 01.09.2026. Fünf additive Migrationen an `offers`, alle
-mit `hasColumn`-Schutz; bestehende Zeilen bleiben, wie sie sind.
+Seven findings from the suite register of 2026-09-01. Five additive migrations on `offers`, all
+guarded with `hasColumn`; existing rows stay as they are.
 
-### Widerruf als Objekt am Angebot (P·3)
+### Withdrawal as an object on the offer (P·3)
 
 `withdrawal_days`, `withdrawal_text`, `withdrawal_waiver_text`, `withdrawal_checkbox_required`,
-`withdrawal_b2b_text`, `withdrawal_pdf`. Leer heißt: der Standard aus
-`config('statamic-offers.withdrawal')`, Platzhalter aus `config('statamic-offers.seller')`.
-`Offer::withdrawalTerms()` liefert das Array samt `version` (12 Zeichen SHA-1 über Frist, Text und
-Einwilligungssatz). Der Wortlaut, dem der Käufer zustimmt, wird vom Funnel an der Zahlung
-eingefroren; hier steht nur, was heute gilt. Der mitgelieferte Text ist ein **Entwurf, anwaltlich
-zu prüfen**. `withdrawal_pdf` ist nur ein Flag, der Anhang ist noch nicht umgesetzt.
+`withdrawal_b2b_text`, `withdrawal_pdf`. Empty means the default from
+`config('statamic-offers.withdrawal')`, with placeholders from
+`config('statamic-offers.seller')`. `Offer::withdrawalTerms()` delivers the array including
+`version` (12 characters of SHA-1 over the period, the text and the consent sentence). The wording
+the buyer agrees to is frozen by the funnel at the payment; what stands here is only what applies
+today. The shipped text is a **draft, to be reviewed by a lawyer**. `withdrawal_pdf` is only a
+flag, the attachment is not implemented yet.
 
-### Feld-Bibliothek auf zwei Ebenen (S·6)
+### Field library on two levels (S·6)
 
-`config('statamic-offers.checkout_fields')` ist die Bibliothek, `checkout_fields` am Angebot die
-Auswahl. `Offers::fieldLibrary()` (statisch, `Goldnead\StatamicOffers\Offers`) und
-`Offer::checkoutFields()`. Unbekannte Schlüssel weist das Formular ab.
+`config('statamic-offers.checkout_fields')` is the library, `checkout_fields` on the offer is the
+selection. `Offers::fieldLibrary()` (static, `Goldnead\StatamicOffers\Offers`) and
+`Offer::checkoutFields()`. The form refuses unknown keys.
 
-### Zugangsbeginn und -dauer (K·5)
+### Access start and duration (K·5)
 
-`access_starts_at`, `access_days`, `Offer::accessWindow()`. Geht als `meta['access']` an die
-Zahlung; die Zugänge schreibt `statamic-entitlements`.
+`access_starts_at`, `access_days`, `Offer::accessWindow()`. Goes to the payment as
+`meta['access']`; the grants are written by `statamic-entitlements`.
 
-### Prozentrabatt (K·6)
+### Percentage discount (K·6)
 
-`discount_percent` (1–99). `effectiveAmountCent()` und `effectiveCompareAtCent()`; `amountCent()`
-delegiert. Eigener Preis und Prozent zusammen werden abgelehnt. Katalog-Resolver, Basket, Tag und
-Listing lesen die effektiven Werte.
+`discount_percent` (1–99). `effectiveAmountCent()` and `effectiveCompareAtCent()`; `amountCent()`
+delegates. An own price and a percentage together are refused. Catalogue resolver, basket, tag and
+listing read the effective values.
 
-### Mengen- und Zeitlimit (K·7)
+### Quantity and time limit (K·7)
 
-`quantity_limit`, `available_from`, `available_until`. Verkauft = bezahlte `payment_items` mit dem
-Kaufhandle des Angebots, jedes Mal frisch gezählt; dazu zählen offene Checkouts jünger als eine
-Stunde als reserviert (`OfferSales::RESERVATION_MINUTES`), damit das Fenster zwischen Start und
-Bezahlung praktisch zu ist. Das Limit bleibt weich, keine Reservierung im Datenbanksinn.
-`remainingQuantity()`, `isWithinWindow()`; `isSellable()` berücksichtigt beides. Spalte
-**Verfügbar** im Listing.
+`quantity_limit`, `available_from`, `available_until`. Sold = paid `payment_items` carrying the
+offer's purchase handle, counted fresh every time; on top of that, open checkouts younger than an
+hour count as reserved (`OfferSales::RESERVATION_MINUTES`), so that the window between start and
+payment is practically closed. The limit stays soft, no reservation in the database sense.
+`remainingQuantity()`, `isWithinWindow()`; `isSellable()` takes both into account. Column
+**Available** in the listing.
 
-### Massen-Gutscheincodes (K·12)
+### Bulk coupon codes (K·12)
 
-Zweite Handlung **Codes erzeugen** auf dem Gutschein-Screen und `php artisan
-offers:coupons:generate`. Bis zu 100 Codes in einer Transaktion, Alphabet ohne 0/O/1/I/l, Retry je
-Code, Abbruch nach zehn Kollisionen statt Teilmenge. Zeitzone steht am Formular.
+A second action **Generate codes** on the coupon screen and `php artisan
+offers:coupons:generate`. Up to 100 codes in one transaction, an alphabet without 0/O/1/I/l, a
+retry per code, an abort after ten collisions rather than a partial set. The time zone is stated
+on the form.
 
-### Upsell-Übersicht (K·15)
+### Upsell overview (K·15)
 
-Filter **Ort** am Angebots-Listing und Spalte **Umsatz**: netto, also bezahlte Zeilen in der
-Angebotswährung abzüglich des Gutscheinanteils der Zeile (`payment_items.discount_cent`) und ihres
-Anteils an Erstattungen (`payments.refunded_cent`, anteilig am Zahlungsbetrag). Fehlt ohne
-Zahlungstabellen; auf `statamic-payments` vor 1.8 ohne die beiden Spalten bleibt sie brutto, mit
-Hinweis im Log.
+Filter **Slot** on the offer listing and column **Turnover**: net, that is, paid rows in the
+offer's currency less the row's coupon share (`payment_items.discount_cent`) and its share of
+refunds (`payments.refunded_cent`, in proportion to the payment amount). Absent without the
+payment tables; on `statamic-payments` before 1.8, which lacks the two columns, it stays gross,
+with a note in the log.
 
 ## 1.5.0 — 2026-09-01
 
-Nachgetragen: die Fassung 1.5.0 ging ohne Eintrag raus. Sie brachte die **Kaufbestätigung als
-Feld am Angebot** (`confirmation_mode` Standard / eigene Vorlage / keine, `confirmation_template`
-aus `et_templates`, nur veröffentlichte Vorlagen wählbar) und den Kasten **„Wo dieses Angebot
-verwendet wird"** (Funnels und Automationen, `OfferUsage`) im Bearbeiten-Formular.
+Added afterwards: version 1.5.0 went out without an entry. It brought the **purchase confirmation
+as a field on the offer** (`confirmation_mode` default / own template / none,
+`confirmation_template` from `et_templates`, only published templates selectable) and the box
+**"Where this offer is used"** (funnels and automations, `OfferUsage`) in the edit form.
 
 ## 1.4.0
 
-### Neu: ein Angebot darf ein Bündel sein
+### New: an offer may be a bundle
 
-Bisher verkaufte ein Angebot genau ein Produkt. Ein Bündel — drei Dinge, ein Preis — ließ sich
-damit nirgends ausdrücken: Bumps sind Häkchen, die der Käufer einzeln entscheidet und die einzeln
-kosten, und ein eigenes Katalogprodukt dafür anzulegen heißt, den Preis wieder in eine Datei zu
-schreiben.
+Until now an offer sold exactly one product. A bundle — three things, one price — could not be
+expressed anywhere: bumps are checkboxes the buyer decides on one by one and which cost one by
+one, and creating a catalogue product of its own for it means writing the price back into a file.
 
-Neues Feld **Enthält außerdem** am Angebot. Bleibt es leer, ändert sich nichts.
+New field **Also contains** on the offer. If it stays empty, nothing changes.
 
-- **Preis:** der eigene, sonst die **Summe der Teile**. Der alte Rückfall auf das Leitprodukt wäre
-  hier zum Fehler geworden: drei Dinge zum Preis von einem, still, bis es jemand nachrechnet.
-- **Freischaltung:** die Vereinigung dessen, was alle Teile gewähren, ohne Dopplungen.
-- **Rechnung:** eine Zeile, geführt unter dem Leitprodukt. An dessen Handle hängt die Steuerklasse,
-  und die braucht genau eine Antwort.
+- **Price:** its own, otherwise the **sum of the parts**. The old fallback to the lead product
+  would have become a bug here: three things for the price of one, silently, until somebody does
+  the arithmetic.
+- **Grants:** the union of what all the parts grant, without duplicates.
+- **Invoice:** one row, booked under the lead product. The tax class hangs on its handle, and that
+  needs exactly one answer.
 
-**Ein Bündel, dessen Teile sich bei `digital` widersprechen, ist nicht verkaufbar.** Der Schlüssel
-beschreibt nicht das Medium, er entscheidet über den Leistungsort und damit über einen von vier
-Pflichthinweisen (§ 3a UStG). Eine Zeile, die zur Hälfte elektronisch erbracht ist, hat keinen
-richtigen — und einen zu wählen hieße, eine Steuerfrage auf einem Dokument zu raten, das sich nicht
-mehr korrigieren lässt. Der Katalog antwortet dann „gibt es nicht", und `Checkout::start()` bricht
-den ganzen Vorgang ab, bevor Geld fließt. Dasselbe, wenn ein Teil aus dem Katalog gefallen ist.
+**A bundle whose parts contradict each other on `digital` is not sellable.** The key does not
+describe the medium, it decides the place of supply and thereby one of four mandatory notes
+(§ 3a UStG). A row that is half rendered electronically has no right one — and to choose one would
+mean guessing a tax question on a document that can no longer be corrected. The catalogue then
+answers "does not exist", and `Checkout::start()` aborts the whole process before money moves. The
+same if a part has dropped out of the catalogue.
 
-**Bündel mit mehr als einer Freischaltung brauchen `statamic-payments` 1.14 oder neuer.** Davor
-nahm `grants` nur eine Zeichenkette; eine Liste fiel dort an `is_string()` heraus und vergab
-**gar nichts** statt des ersten Stücks. Ein solches Bündel verweigert deshalb die Auflösung und
-schreibt den Grund ins Log, statt sich verkaufen zu lassen und nichts zu liefern. Geprüft wird die
-installierte Klasse, nicht eine Zahl in einer Datei.
+**Bundles with more than one grant need `statamic-payments` 1.14 or newer.** Before that `grants`
+took only a string; a list fell out there at `is_string()` and granted **nothing at all** instead
+of the first item. Such a bundle therefore refuses resolution and writes the reason to the log,
+instead of letting itself be sold and delivering nothing. What is checked is the installed class,
+not a number in a file.
 
-Der aufgelöste Katalogeintrag trägt neben `product` (dem Leitprodukt) jetzt `products` mit allen
-Teilen — damit ein Geschwister, das die Auslieferung macht, nicht die Angebotstabelle selbst
-abfragen muss.
+Beside `product` (the lead product) the resolved catalogue entry now carries `products` with all
+the parts — so that a sibling doing the delivery does not have to query the offers table itself.
 
-Migration: `products` (json, nullable) an `offers`. Bestehende Zeilen bleiben, wie sie sind.
+Migration: `products` (json, nullable) on `offers`. Existing rows stay as they are.
 
 ## 1.3.0
 
-### Fixed — ein Angebot war nur ein Preis, und das riss die Familie auseinander
+### Fixed — an offer was only a price, and that tore the family apart
 
-Der Katalog-Resolver gab `name`, `amount_cent`, `currency` und `offer` zurück. Alles andere über
-das verkaufte Ding steht am Produkt, und ein Angebot ist laut eigener Beschreibung „ein Produkt,
-dargestellt". Zwei Folgen, beide still:
+The catalogue resolver returned `name`, `amount_cent`, `currency` and `offer`. Everything else
+about the thing being sold lives on the product, and an offer is, by its own description, "a
+product, presented". Two consequences, both silent:
 
-- **`digital` und die Steuerklasse fehlten** → `statamic-invoices` konnte für eine über ein Angebot
-  bezahlte Bestellung **gar keine Rechnung** schreiben. Die beworbene Kette Funnel → Angebot →
-  Zahlung → Rechnung riss am letzten Glied, auf jeder Installation, die die Familie so einsetzt,
-  wie die Doku sie beschreibt.
-- **`grants` fehlte** → wer über ein Angebot kaufte, bekam **keinen Zugang**. Die Zahlung ging
-  durch, das Geld kam an, der Zugang erschien nie. Ohne Fehler: „dieses Produkt gewährt nichts" und
-  „dieses Produkt kenne ich nicht" kamen beide als dasselbe `null` zurück.
+- **`digital` and the tax class were missing** → for an order paid through an offer
+  `statamic-invoices` could write **no invoice at all**. The advertised chain funnel → offer →
+  payment → invoice broke at the last link, on every installation that uses the family the way the
+  documentation describes it.
+- **`grants` was missing** → anyone who bought through an offer got **no access**. The payment
+  went through, the money arrived, the access never appeared. Without an error: "this product
+  grants nothing" and "I do not know this product" both came back as the same `null`.
 
-Der Resolver liefert jetzt das Produkt-Array mit den Überschreibungen des Angebots darüber. Der
-Angebotspreis und -name gewinnen, alles Übrige wird geerbt. **Erfunden wird nichts:** ein Angebot
-für ein Produkt, das `digital` nicht angibt, gibt es ebenfalls nicht an — und das Rechnungs-Addon
-verweigert dann weiterhin, statt zu raten.
+The resolver now delivers the product array with the offer's overrides on top. The offer's price
+and name win, everything else is inherited. **Nothing is invented:** an offer for a product that
+does not state `digital` does not state it either — and the invoice addon then still refuses
+instead of guessing.
 
-Dazu neu im Ergebnis: `product`, der Handle des Dings darunter. Steuerklassen werden je
-Produkt-Handle konfiguriert, und ein Angebot hat einen eigenen — ohne diesen Schlüssel wäre ein
-Angebot für ein ermäßigtes Produkt still auf die Standardklasse gefallen und hätte den falschen
-Satz auf ein Steuerdokument gedruckt.
+New in the result as well: `product`, the handle of the thing underneath. Tax classes are
+configured per product handle, and an offer has one of its own — without this key an offer for a
+reduced-rate product would silently have fallen back to the standard class and printed the wrong
+rate on a tax document.
 
-Drei ausgelieferte Addons, drei grüne Suiten, und der Fehler lag in der Lücke dazwischen.
+Three shipped addons, three green suites, and the bug lay in the gap between them.
 
 ## 1.2.0
 
