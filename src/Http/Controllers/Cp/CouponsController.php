@@ -361,7 +361,11 @@ class CouponsController extends CpController
      */
     protected function offers(): array
     {
+        // Ein Auswahlfeld, also verengt: ein Gutschein, der auf das Angebot
+        // einer fremden Marke gelegt wird, ist nicht nur unsichtbar falsch, er
+        // gibt beim Aufklappen deren Angebotsnamen preis.
         return Offer::query()
+            ->forBrand()
             ->orderBy('name')
             ->get(['handle', 'name'])
             ->map(fn (Offer $offer) => ['value' => $offer->handle, 'label' => $offer->name])

@@ -4,6 +4,7 @@ namespace Goldnead\StatamicOffers\Models;
 
 use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\OfferSales;
+use Goldnead\StatamicPayments\Support\Brands;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -165,6 +166,35 @@ class Offer extends Model
     public static function confirmationModes(): array
     {
         return [self::CONFIRMATION_DEFAULT, self::CONFIRMATION_CUSTOM, self::CONFIRMATION_NONE];
+    }
+
+    /**
+     * Auf das verengen, was der jetzige Leser sehen darf.
+     *
+     * **Ausdruecklich, nicht als globaler Scope**, und das ist die ganze
+     * Vorsicht an dieser Stelle. Ein globaler Scope laege auch auf dem Weg, den
+     * der Katalog-Resolver und der Webhook nehmen — und der Webhook hat keine
+     * Marke. `Brands::only()` schliesst bei unbeantwortbarer Frage zu, also
+     * faende die Erfuellung einer bezahlten Bestellung ihr Angebot nicht mehr:
+     * Geld geflossen, nichts ausgeliefert, keine Meldung. Genau diese Form hat
+     * `brand-context` 1.11.0 schon einmal gehabt, dort auf der oeffentlichen
+     * Website.
+     *
+     * Also verengen nur die Stellen, die eine Marke haben: die CP-Liste, die
+     * Auswahlfelder, das Laden einer Zeile zum Bearbeiten. Dieselbe Naht wie in
+     * `statamic-products`, wo sie seit 1.0.0 so herum liegt.
+     *
+     * `readerId()`, nie `stampId()`. Das zweite beantwortet „wessen Zeile wird
+     * das gleich" und landet ohne Marke auf Null; an `only()` gereicht liest
+     * sich das als „zeig die Zeilen, die niemand beansprucht" statt als „zeig
+     * nichts".
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeForBrand(Builder $query, ?int $brandId = null): Builder
+    {
+        return Brands::only($query, $brandId ?? Brands::readerId());
     }
 
     /** @return list<string> */

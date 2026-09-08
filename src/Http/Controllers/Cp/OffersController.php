@@ -6,6 +6,7 @@ use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\Setup;
+use Goldnead\StatamicPayments\Support\Brands;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -59,7 +60,7 @@ class OffersController extends CpController
             'storeUrl' => cp_route('utilities.offers.store'),
             'sortColumn' => 'name',
             'sortDirection' => 'asc',
-            'hasAny' => Offer::query()->exists(),
+            'hasAny' => Offer::query()->forBrand()->exists(),
             // What may be sold. Offered as a list rather than a free text field
             // because an offer pointing at a product nobody configured is the
             // single most likely way to build one that cannot be bought.
@@ -110,23 +111,31 @@ class OffersController extends CpController
     {
         $this->authorizeAccess();
 
-        $offer = Offer::create($this->validated($request));
+        // Wem die neue Zeile gehoert. `stampId()` und nicht `readerId()`: hier
+        // ist die Frage „wessen Zeile wird das gleich", und die Antwort ohne
+        // Mandanten ist Null — genau der Wert, auf dem jede Zeile eines
+        // Betriebs mit einer Marke steht.
+        $offer = Offer::create($this->validated($request) + ['brand_id' => Brands::stampId()]);
 
         return back()->with('message', __('statamic-offers::messages.saved', ['name' => $offer->name]));
     }
 
-    public function update(Request $request, Offer $offer)
+    public function update(Request $request, string $offer)
     {
         $this->authorizeAccess();
+
+        $offer = $this->ownOffer($offer);
 
         $offer->update($this->validated($request, $offer));
 
         return back()->with('message', __('statamic-offers::messages.saved', ['name' => $offer->name]));
     }
 
-    public function destroy(Request $request, Offer $offer)
+    public function destroy(Request $request, string $offer)
     {
         $this->authorizeAccess();
+
+        $offer = $this->ownOffer($offer);
 
         // The counts go with it. An offer nobody can see any more should not
         // keep contributing to a conversion report.
@@ -476,9 +485,22 @@ class OffersController extends CpController
         }
     }
 
+    /**
+     * Eine Zeile, die dieser Marke gehoert, sonst 404.
+     *
+     * Ohne diese Wache liesse sich eine fremde Zeile ueber ihre Nummer
+     * bearbeiten oder loeschen: die Liste zeigt sie nicht mehr, die Route nimmt
+     * sie trotzdem an. Ein 404 und kein 403, weil „gibt es nicht" die einzige
+     * Antwort ist, die einer anderen Marke nichts ueber diese verraet.
+     */
+    protected function ownOffer(string $id): Offer
+    {
+        return Offer::query()->forBrand()->findOrFail($id);
+    }
+
     protected function json(FilteredRequest $request)
     {
-        $query = Offer::query();
+        $query = Offer::query()->forBrand();
 
         if ($search = trim((string) $request->input('search', ''))) {
             $this->applySearch($query, $search);
@@ -550,6 +572,7 @@ class OffersController extends CpController
     protected function bumpOptions(): array
     {
         return Offer::query()
+            ->forBrand()
             ->where('slot', Offer::SLOT_BUMP)
             ->orderBy('name')
             ->get(['handle', 'name'])

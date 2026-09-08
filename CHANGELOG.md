@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.11.0 — 2026-09-08
+
+### Added: the offers screen shows one brand at a time
+
+An agency with several brands saw every brand's offers in one table — on the public demo, thirteen
+rows from five brands, while the products screen of the same install separated them cleanly. Anyone
+working as one brand read another brand's prices and could put another brand's offer into their own
+coupon.
+
+Offers now carry a `brand_id` and the Control Panel narrows to it: the listing, the "is there
+anything yet" check, the bump picker, the offer picker on the coupons screen, and loading a row to
+edit or delete it. Same seam as `statamic-products`, which has had it since 1.0.0.
+
+**Explicitly at those five places, never as a global scope**, and that is the whole care in this
+change. A global scope would also lie on the path the catalogue resolver takes, and a webhook has no
+brand. `Brands::only()` closes when the question cannot be answered, so fulfilling a paid order
+would stop finding its offer: money in, nothing delivered, nothing said. `brand-context` 1.11.0
+already had exactly this shape once, on the public website. There is a test that buys through the
+catalogue with no current brand and asserts it still resolves.
+
+Loading a row to edit or delete goes through the same narrowing and answers 404 for another brand's
+offer. Without it the listing hides the row while the route still accepts it, and guessing a number
+is no art.
+
+**Existing rows stay on brand zero, and that is a decision.** Nothing in this table says which brand
+an old row belongs to — a handle that starts with `cw-` is a naming habit, not a statement — and
+guessing would put one brand's offers in another's list, which is the bug this column fixes. On a
+single-brand install zero is right and nothing changes at all. On a multi-brand install the old rows
+take their brand the first time somebody saves them.
+
 ## 1.10.1 — 2026-09-08
 
 ### Fixed: a pricing option without a label no longer grows one
