@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.10.0 — 2026-09-08
+
+### Added: one offer, several ways to pay, chosen at checkout
+
+Until now an offer carried one payment rhythm. "The same thing in three instalments" meant a second
+offer beside the first, and a funnel step points at exactly one offer — so the only way to show a
+buyer both was to make them decline the first.
+
+An offer now carries a list of `pricing_options`. Each row is the same set of fields the offer has
+carried since 1.8.0 — amount, interval, count, trial — only several times over, and each one
+resolves through the existing catalogue resolver as `offer:<handle>:<key>`:
+
+```
+offer:choiraccelerator            → 1.500 € once
+offer:choiraccelerator:raten3     → 3 × 520 €
+offer:choiraccelerator:abo        → 90 € a month
+```
+
+The checkout, the follow-up charge and every guard around them are untouched, because a handle with
+a key is a handle like any other. Three payment types, read off the fields rather than declared
+beside them: no interval is a one-off, an interval with a count is instalments, an interval without
+one is a subscription.
+
+Three decisions that touch money:
+
+- **An unknown key resolves to nothing, not to the base price.** An old link or a deleted option
+  would otherwise become a charge for an amount nobody picked. `Checkout::start()` refuses loudly.
+- **A chosen option replaces the offer's own rhythm rather than adding to it.** Otherwise an option
+  labelled "once" would inherit the `interval` next to it and be charged monthly.
+- **The name stays the offer's.** The invoice line already says "instalment n of m (total X)"; the
+  option's label is checkout language and does not belong on a document somebody keeps.
+
+Half-written rows are dropped rather than guessed, and the control panel writes exactly the shape the
+resolver reads — an option somebody enters should not go missing at the checkout.
+
+### Added: the basket knows which option was chosen
+
+`Basket::make()` takes the key, appends it to the first handle and applies a coupon to **that**
+amount. Without it "10 percent off" would come off the full price while the instalment is what gets
+charged. A key the offer does not carry throws rather than falling back.
+
 ## 1.9.0 — 2026-09-08
 
 ### Changed: both screens show an empty state instead of HTTP 500 when their tables are missing
