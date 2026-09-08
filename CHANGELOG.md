@@ -24,6 +24,10 @@ Loading a row to edit or delete goes through the same narrowing and answers 404 
 offer. Without it the listing hides the row while the route still accepts it, and guessing a number
 is no art.
 
+The minimum `statamic-payments` moves to 1.14, the version that introduced `Brands`. Same reason the
+bundle rules already carry one: a constraint that allows a sibling without the seam is a constraint
+that lets somebody install the pair and get a fatal error on the offers screen.
+
 **Existing rows stay on brand zero, and that is a decision.** Nothing in this table says which brand
 an old row belongs to — a handle that starts with `cw-` is a naming habit, not a statement — and
 guessing would put one brand's offers in another's list, which is the bug this column fixes. On a
