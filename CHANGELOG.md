@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.11.1 — 2026-09-08
+
+### Fixed: an offer made outside the Control Panel gets a brand too
+
+1.11.0 stamped `brand_id` in `OffersController::store()` alone, so every other way of making an offer
+— a console command, a seeder, an import — left it unset. On a multi-brand install those rows then
+appeared in **no** listing at all: created, invisible, nothing said. The playground's own seeder did
+exactly that until it set the column by hand.
+
+The model stamps it now, in `creating`, the same place and the same way `statamic-products` has done
+since 1.0.0. The explicit stamp in the controller is gone with it: two places for one rule are the
+one that later learns something and the one that does not.
+
+`Brands::stampId()`, not `readerId()`. "Whose row is this about to be" may answer zero — that is what
+every row on a single-brand install carries — while "whose rows may this reader see" may not.
+
 ## 1.11.0 — 2026-09-08
 
 ### Added: the offers screen shows one brand at a time

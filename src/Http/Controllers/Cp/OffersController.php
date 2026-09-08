@@ -111,11 +111,11 @@ class OffersController extends CpController
     {
         $this->authorizeAccess();
 
-        // Wem die neue Zeile gehoert. `stampId()` und nicht `readerId()`: hier
-        // ist die Frage „wessen Zeile wird das gleich", und die Antwort ohne
-        // Mandanten ist Null — genau der Wert, auf dem jede Zeile eines
-        // Betriebs mit einer Marke steht.
-        $offer = Offer::create($this->validated($request) + ['brand_id' => Brands::stampId()]);
+        // Die Marke stempelt das Modell selbst ({@see Offer::booted()}), damit
+        // sie auf jedem Weg gesetzt wird und nicht nur auf diesem. Hier stand
+        // sie einmal ausdruecklich; zwei Stellen fuer dieselbe Regel sind die
+        // eine, die spaeter etwas lernt, und die andere, die es nicht tut.
+        $offer = Offer::create($this->validated($request));
 
         return back()->with('message', __('statamic-offers::messages.saved', ['name' => $offer->name]));
     }

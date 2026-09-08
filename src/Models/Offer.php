@@ -117,6 +117,27 @@ class Offer extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::creating(function (self $offer): void {
+            // Wem dieses Angebot gehoert. Null auf jedem Betrieb ohne
+            // Mandanten, und ein echtes Ergebnis im Mehrmarken-Betrieb, wo
+            // niemand eine Marke genannt hat — ein Kommando, ein Seeder, ein
+            // Import. Das Control Panel zeigt es dann niemandem, und das ist
+            // die geschlossene Haelfte derselben Entscheidung.
+            //
+            // **Hier und nicht nur im CP-Controller.** Vorher stempelte allein
+            // `OffersController::store()`, also legte jeder andere Weg
+            // Angebote ohne Marke an, die danach in keiner einzigen Liste
+            // erscheinen: angelegt, unsichtbar, keine Meldung. Genau so hat es
+            // der Seeder des Playgrounds getan, bevor er die Spalte von Hand
+            // setzte. Dieselbe Stelle wie in `statamic-products`.
+            if ($offer->getAttribute('brand_id') === null) {
+                $offer->setAttribute('brand_id', Brands::stampId());
+            }
+        });
+    }
+
     /**
      * How an offer is referred to where a product handle is expected.
      *

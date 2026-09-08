@@ -113,6 +113,56 @@ class BrandScopeTest extends TestCase
     }
 
     #[Test]
+    public function ein_angebot_ausserhalb_des_cp_bekommt_die_marke_und_erscheint_in_der_liste(): void
+    {
+        // **Der Weg, den es vorher nicht gab.** Gestempelt hat allein
+        // `OffersController::store()`, also legte jeder andere Weg — ein
+        // Kommando, ein Seeder, ein Import — Angebote ohne Marke an, die
+        // danach in keiner einzigen Liste erscheinen: angelegt, unsichtbar,
+        // keine Meldung. Genau so hat sich der Seeder des Playgrounds
+        // verhalten, bevor er die Spalte von Hand setzte.
+        $this->marke(current: 4);
+
+        // Ohne `brand_id`, wie ein Seeder es täte.
+        Offer::create([
+            'handle' => 'aus-einem-seeder',
+            'name' => 'Aus einem Seeder',
+            'product' => 'noten-paket',
+            'amount_cent' => 1000,
+            'slot' => Offer::SLOT_STANDALONE,
+            'active' => true,
+        ]);
+
+        $this->assertSame(4, Offer::query()->where('handle', 'aus-einem-seeder')->firstOrFail()->brand_id);
+
+        $handles = collect($this->actingAs($this->user())->getJson('/cp/utilities/offers')->json('data'))
+            ->pluck('handle')
+            ->all();
+
+        $this->assertSame(['aus-einem-seeder'], $handles);
+    }
+
+    #[Test]
+    public function ohne_mandanten_steht_die_marke_auf_null(): void
+    {
+        // Der Normalfall, und der Grund, warum der Haken `stampId()` nimmt und
+        // nicht `readerId()`: „wessen Zeile wird das gleich" darf Null
+        // beantworten, „wessen Zeilen darf dieser Leser sehen" nicht.
+        $this->marke(multi: false, current: null);
+
+        Offer::create([
+            'handle' => 'ein-betrieb',
+            'name' => 'Ein Betrieb',
+            'product' => 'noten-paket',
+            'amount_cent' => 1000,
+            'slot' => Offer::SLOT_STANDALONE,
+            'active' => true,
+        ]);
+
+        $this->assertSame(0, Offer::query()->where('handle', 'ein-betrieb')->firstOrFail()->brand_id);
+    }
+
+    #[Test]
     public function ein_fremdes_angebot_laesst_sich_weder_aendern_noch_loeschen(): void
     {
         $this->marke(current: 1);
