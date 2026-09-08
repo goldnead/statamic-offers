@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0 — 2026-09-08
+
+### Changed: both screens show an empty state instead of HTTP 500 when their tables are missing
+
+Both screens of this addon hang off `Utility::register()`, so the nav entries appear the moment
+composer put the package there — migrations are a separate, manual step. Between the two,
+`/cp/utilities/offers` and `/cp/utilities/coupons` answered HTTP 500, because each one reaches for
+its table while the page is being built: the offers listing needs `offers`, the coupons listing
+`offer_coupons` and `offers`.
+
+Each screen now checks before its first query and renders a setup page that names the missing tables
+and says to run `php artisan migrate`. The reason does not disappear with the 500: a guarded page
+writes to the log why it turned somebody away. Otherwise the site would look installed and never
+work.
+
 ## 1.8.2 — 2026-09-07
 
 ### Fixed: without `ext-intl` the price stood in the wrong language
