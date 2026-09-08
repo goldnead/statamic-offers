@@ -24,7 +24,7 @@ Loading a row to edit or delete goes through the same narrowing and answers 404 
 offer. Without it the listing hides the row while the route still accepts it, and guessing a number
 is no art.
 
-The minimum `statamic-payments` moves to 1.14, the version that introduced `Brands`. Same reason the
+The minimum `statamic-payments` moves to 1.15, the version whose `Brands` carries `readerId()`. Same reason the
 bundle rules already carry one: a constraint that allows a sibling without the seam is a constraint
 that lets somebody install the pair and get a fatal error on the offers screen.
 

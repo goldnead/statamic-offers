@@ -12,7 +12,7 @@
     "php": "^8.2",
     "statamic/cms": "^6.0",
     "goldnead/statamic-brand-context": "^1.13",
-    "goldnead/statamic-payments": "^1.14"
+    "goldnead/statamic-payments": "^1.15"
   },
   "require-dev": {
     "larastan/larastan": "^3.0",
