@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Tests\Feature;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\Basket;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Goldnead\StatamicPayments\Support\Subscriptions;
@@ -222,5 +223,27 @@ class PricingOptionsTest extends TestCase
                 ],
             ])
             ->assertJsonValidationErrors('pricing_options.0.key');
+    }
+
+    #[Test]
+    public function a_basket_buys_the_chosen_option_and_a_coupon_counts_on_its_amount(): void
+    {
+        $offer = $this->offer();
+
+        $basket = Basket::make($offer, [], null, 'raten3');
+
+        $this->assertSame(['offer:choiraccelerator:raten3'], $basket->handles());
+
+        // Der Gutschein rechnet auf die Rate, nicht auf den Grundpreis. Sonst
+        // zoege „10 Prozent" 150 Euro von einer Abbuchung ueber 520 ab.
+        $this->assertSame(52000, $basket->grossCent());
+    }
+
+    #[Test]
+    public function a_basket_refuses_a_key_the_offer_does_not_carry(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        Basket::make($this->offer(), [], null, 'gibtsnicht');
     }
 }

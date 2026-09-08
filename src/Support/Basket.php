@@ -24,19 +24,43 @@ class Basket
 {
     /**
      * @param  list<string>  $bumpHandles  What the browser says was ticked.
+     * @param  string|null  $pricingOption  Welche Zahlweise gewaehlt wurde, wenn
+     *                                      das Angebot mehrere fuehrt.
+     *
+     * @throws \InvalidArgumentException wenn das Angebot diese Zahlweise nicht fuehrt
      */
-    public static function make(Offer $offer, array $bumpHandles = [], ?string $code = null): self
+    public static function make(Offer $offer, array $bumpHandles = [], ?string $code = null, ?string $pricingOption = null): self
     {
-        return new self($offer, self::allowedBumps($offer, $bumpHandles), Coupon::findByCode($code));
+        $option = null;
+
+        if ($pricingOption !== null && $pricingOption !== '') {
+            $option = $offer->pricingOption($pricingOption);
+
+            // **Laut, nicht stillschweigend zum Grundpreis.** Ein Schluessel,
+            // den das Angebot nicht fuehrt, kommt aus einem veralteten
+            // Formular, einem alten Link oder einer geloeschten Option — und
+            // „dann eben der volle Preis" waere eine Abbuchung ueber einen
+            // Betrag, den niemand ausgewaehlt hat. Die aufrufende Strecke
+            // prueft vorher; das hier ist die Wache dahinter.
+            if ($option === null) {
+                throw new \InvalidArgumentException(
+                    'statamic-offers: das Angebot '.$offer->handle.' fuehrt keine Zahlweise '.$pricingOption.'.'
+                );
+            }
+        }
+
+        return new self($offer, self::allowedBumps($offer, $bumpHandles), Coupon::findByCode($code), $option);
     }
 
     /**
      * @param  list<Offer>  $bumps
+     * @param  array{key: string, label: string, type: string, amount_cent: int, interval: string|null, times: int|null, trial_days: int|null, trial_amount_cent: int|null}|null  $option
      */
     protected function __construct(
         public readonly Offer $offer,
         public readonly array $bumps,
         protected readonly ?Coupon $coupon,
+        public readonly ?array $option = null,
     ) {}
 
     /**
@@ -84,17 +108,34 @@ class Basket
     {
         $prefix = Offer::prefix();
 
-        return array_map(
+        $handles = array_map(
             fn (Offer $o) => $prefix.$o->handle,
             [$this->offer, ...$this->bumps],
         );
+
+        // Die gewaehlte Zahlweise haengt am **ersten** Handle, weil der die
+        // Zahlung traegt: `Subscriptions::start()` liest den Rhythmus dort,
+        // und ein Bump daneben ist einmal gekauft und nicht jede Rate wieder.
+        if ($this->option !== null) {
+            $handles[0] .= ':'.$this->option['key'];
+        }
+
+        return $handles;
     }
 
     public function grossCent(): int
     {
-        return array_sum(array_map(
+        // Bei einer Zahlweise ihr Betrag, sonst der des Angebots. Das ist die
+        // Zahl, auf die ein Gutschein rechnet, und sie muss dieselbe sein, die
+        // der Katalog abbucht — sonst zieht ein Prozentgutschein einen
+        // Prozentsatz von einem Preis ab, der gar nicht gezahlt wird.
+        $erste = $this->option !== null
+            ? $this->option['amount_cent']
+            : (int) $this->offer->effectiveAmountCent();
+
+        return $erste + array_sum(array_map(
             fn (Offer $o) => (int) $o->effectiveAmountCent(),
-            [$this->offer, ...$this->bumps],
+            $this->bumps,
         ));
     }
 
