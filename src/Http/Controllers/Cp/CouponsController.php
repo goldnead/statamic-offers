@@ -6,6 +6,7 @@ use Goldnead\StatamicOffers\Http\Resources\Cp\CouponsCollection;
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\CouponBatch;
+use Goldnead\StatamicOffers\Support\Setup;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -42,6 +43,14 @@ class CouponsController extends CpController
     public function index(FilteredRequest $request)
     {
         $this->authorizeAccess();
+
+        // Two tables, because the offer picker on this screen reads the offers
+        // a code may be limited to. Before the branch, so the listing's own XHR
+        // is guarded too — it hits the same tables and would answer 500 behind
+        // a page that rendered fine.
+        if ($setup = Setup::guard(__('statamic-offers::messages.coupons_utility_nav'), 'offer_coupons', 'offers')) {
+            return $setup;
+        }
 
         if ($request->wantsJson() && ! $request->header('X-Inertia')) {
             return $this->json($request);

@@ -4,6 +4,8 @@ return [
     'utility_title' => 'Angebote',
     'utility_nav' => 'Angebote',
     'utility_description' => 'Was verkauft wird, zu welchem Preis und mit welchen Worten.',
+    'setup_required_heading' => 'Diese Seite braucht ihre Datenbanktabellen, und die gibt es noch nicht.',
+    'setup_required_description' => 'Führe `php artisan migrate` aus, danach lädt die Seite normal. Der Grund steht auch im Log.',
     'empty_heading' => 'Noch keine Angebote',
     'empty_title' => 'Hier ist noch nichts',
     'empty_description' => 'Ein Angebot nimmt ein Produkt aus dem Katalog und gibt ihm einen Ort, einen Text und, wenn du willst, einen eigenen Preis.',

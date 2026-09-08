@@ -4,6 +4,8 @@ return [
     'utility_title' => 'Offers',
     'utility_nav' => 'Offers',
     'utility_description' => 'What is sold, at what price, and with which words.',
+    'setup_required_heading' => 'This page needs its database tables, and they are not there yet.',
+    'setup_required_description' => 'Run `php artisan migrate` and the page loads as usual. The reason is in the log as well.',
     'empty_heading' => 'No offers yet',
     'empty_title' => 'Nothing here yet',
     'empty_description' => 'An offer takes a product from the catalogue and gives it a place, some words and, if you want, a price of its own.',

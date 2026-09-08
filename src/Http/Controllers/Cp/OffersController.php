@@ -5,6 +5,7 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Offers;
+use Goldnead\StatamicOffers\Support\Setup;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -38,6 +39,16 @@ class OffersController extends CpController
     public function index(FilteredRequest $request)
     {
         $this->authorizeAccess();
+
+        // Before the branch, so the listing's own XHR is guarded too — it hits
+        // the same table and would answer 500 behind a page that rendered fine.
+        // The payment tables are deliberately not in this list: `OfferSales`
+        // already asks for them and drops the revenue column when they are
+        // absent, and offers are worth reading on a site that has not migrated
+        // payments yet.
+        if ($setup = Setup::guard(__('statamic-offers::messages.utility_nav'), 'offers')) {
+            return $setup;
+        }
 
         if ($request->wantsJson() && ! $request->header('X-Inertia')) {
             return $this->json($request);
