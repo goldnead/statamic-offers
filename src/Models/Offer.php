@@ -241,9 +241,12 @@ class Offer extends Model
 
             $optionen[] = [
                 'key' => $key,
-                'label' => is_string($zeile['label'] ?? null) && trim($zeile['label']) !== ''
-                    ? trim($zeile['label'])
-                    : $key,
+                // **Roh, kein Rueckfall auf den Schluessel.** Der Rueckfall
+                // gehoert dorthin, wo angezeigt wird, nicht hierher: das CP
+                // liest diese Liste, um das Formular zu fuellen, und ein hier
+                // erfundenes Label stuende beim naechsten Speichern als
+                // Bezeichnung in der Spalte, ohne dass jemand es getippt hat.
+                'label' => is_string($zeile['label'] ?? null) ? trim($zeile['label']) : '',
                 'type' => $typ,
                 'amount_cent' => $betrag,
                 'interval' => $intervall === '' ? null : $intervall,

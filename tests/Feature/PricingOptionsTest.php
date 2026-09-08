@@ -208,6 +208,57 @@ class PricingOptionsTest extends TestCase
     }
 
     #[Test]
+    public function an_option_without_a_label_keeps_an_empty_one_rather_than_growing_its_key(): void
+    {
+        // Der Rueckfall auf den Schluessel gehoert dorthin, wo angezeigt wird.
+        // Stuende er hier, faende das CP-Formular ihn als Bezeichnung vor und
+        // schriebe ihn beim naechsten Speichern in die Spalte — als Eingabe,
+        // die niemand gemacht hat.
+        $offer = $this->offer(['pricing_options' => [
+            ['key' => 'raten3', 'amount_cent' => 52000, 'interval' => '1 month', 'times' => 3],
+        ]]);
+
+        $this->assertSame('', $offer->pricingOptions()[0]['label']);
+    }
+
+    #[Test]
+    public function the_control_panel_writes_a_trial_per_option(): void
+    {
+        $this->actingAs($this->user())
+            ->postJson('/cp/utilities/offers', [
+                'name' => 'ChoirAccelerator',
+                'handle' => 'choiraccelerator',
+                'product' => 'noten-paket',
+                'amount_cent' => 150000,
+                'slot' => Offer::SLOT_STANDALONE,
+                'active' => true,
+                'pricing_options' => [
+                    ['key' => 'abo', 'label' => 'Monatlich', 'amount_cent' => 9000, 'interval' => '1 month', 'trial_days' => 14, 'trial_amount_cent' => 100],
+                    // Ohne Rhythmus wirkungslos, also beim Speichern geleert.
+                    ['key' => 'voll', 'label' => 'Einmalig', 'amount_cent' => 150000, 'trial_days' => 14],
+                ],
+            ])
+            ->assertRedirect();
+
+        $offer = Offer::query()->where('handle', 'choiraccelerator')->firstOrFail();
+
+        $this->assertSame(14, $offer->pricing_options[0]['trial_days']);
+        $this->assertSame(100, $offer->pricing_options[0]['trial_amount_cent']);
+
+        // Die einmalige Zeile behaelt keine Testphase: sie waere wirkungslos
+        // und wuerde in dem Moment wirken, in dem jemand spaeter ein Intervall
+        // eintraegt.
+        $this->assertArrayNotHasKey('trial_days', $offer->pricing_options[1]);
+
+        // Und der Katalog gibt die Testphase der Option heraus, nicht die des
+        // Angebots.
+        $plan = app(Subscriptions::class)->planFor('offer:choiraccelerator:abo');
+
+        $this->assertSame(14, $plan['trial_days']);
+        $this->assertSame(100, $plan['trial_amount_cent']);
+    }
+
+    #[Test]
     public function the_control_panel_refuses_a_key_that_would_split_a_handle(): void
     {
         $this->actingAs($this->user())

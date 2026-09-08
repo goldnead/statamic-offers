@@ -630,6 +630,32 @@ const statusColor = (row) => {
                                 />
                             </Field>
                         </div>
+
+                        <!-- Die Testphase je Option. Ohne Rhythmus wirkungslos
+                             und beim Speichern mit geleert, dieselbe Regel wie
+                             beim Angebot selbst. -->
+                        <div class="mt-3 grid grid-cols-2 gap-4">
+                            <Field :label="t.field_trial_days" :error="optionError(index, 'trial_days')">
+                                <Input
+                                    :model-value="option.trial_days"
+                                    type="number"
+                                    min="0"
+                                    :disabled="!option.interval"
+                                    @update:model-value="option.trial_days = $event === '' ? null : Number($event)"
+                                />
+                            </Field>
+
+                            <Field :label="t.field_trial_amount" :error="optionError(index, 'trial_amount_cent')">
+                                <Input
+                                    :model-value="option.trial_amount_cent"
+                                    type="number"
+                                    min="0"
+                                    :append="currency"
+                                    :disabled="!option.interval"
+                                    @update:model-value="option.trial_amount_cent = $event === '' ? null : Number($event)"
+                                />
+                            </Field>
+                        </div>
                     </div>
 
                     <Button class="mt-3" size="sm" :text="t.pricing_option_add" @click="addPricingOption" />

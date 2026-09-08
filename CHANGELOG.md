@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.10.1 — 2026-09-08
+
+### Fixed: a pricing option without a label no longer grows one
+
+`pricingOptions()` filled an empty label with the option's key so the checkout had something to
+print. The control panel reads that same list to fill its form, so the key came back as a label and
+the next save wrote it into the column — as an entry nobody typed. The label now stays empty here
+and the fallback lives where the option is displayed.
+
+### Added: the trial fields per option, in the form
+
+Model, validation, normalisation and resolver have carried `trial_days` and `trial_amount_cent` per
+option since 1.10.0; the form did not show them, so the only way to set a trial on one option was
+SQL. Two fields per row now, disabled without a rhythm and emptied on save with it — the same rule
+the offer's own trial fields follow.
+
 ## 1.10.0 — 2026-09-08
 
 ### Added: one offer, several ways to pay, chosen at checkout
