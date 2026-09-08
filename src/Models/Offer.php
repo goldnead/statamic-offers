@@ -14,6 +14,8 @@ use Illuminate\Support\Carbon;
  * A product, presented.
  *
  * @property int $id
+ * @property int $brand_id — wem die Zeile gehoert; Null auf jedem Betrieb ohne
+ *                         Mandanten. Gelesen wird ueber `forBrand()`, nie von Hand.
  * @property string $handle
  * @property string $name
  * @property string $product

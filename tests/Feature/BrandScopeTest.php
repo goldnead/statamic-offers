@@ -7,6 +7,7 @@ use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Goldnead\StatamicPayments\Support\Catalogue;
 use PHPUnit\Framework\Attributes\Test;
+use Statamic\Facades\Antlers;
 use Statamic\Facades\User;
 
 /**
@@ -153,6 +154,56 @@ class BrandScopeTest extends TestCase
             // Ein Auswahlfeld mit zu vielen Zeilen sieht aus wie ein
             // Auswahlfeld; deshalb steht es hier als Zusicherung.
             ->assertDontSee('hm-shirt');
+    }
+
+    #[Test]
+    public function die_website_zeigt_keine_angebote_fremder_marken(): void
+    {
+        // **Anders als der Webhook hat die Website eine Marke.**
+        // `brand-context` haengt `SetBrandForSite` in die `web`-Gruppe und
+        // loest sie aus Site, Host oder Pfad auf, auch fuer anonyme Besucher.
+        // Ohne Verengung lieferte die Seite von Marke A die Namen, Preise und
+        // den kaufbaren Handle der Angebote von Marke B aus.
+        $this->marke(current: 1);
+
+        $this->angebot('cw-kurs', 1);
+        $this->angebot('hm-vinyl', 2);
+
+        $gerendert = (string) Antlers::parse(
+            '{{ offers:slot slot="standalone" }}{{ handle }},{{ /offers:slot }}',
+            [],
+            true,
+        );
+
+        $this->assertStringContainsString('cw-kurs', $gerendert);
+        $this->assertStringNotContainsString('hm-vinyl', $gerendert);
+    }
+
+    #[Test]
+    public function ein_bump_einer_fremden_marke_laesst_sich_nicht_anhaengen(): void
+    {
+        $this->marke(current: 1);
+
+        $this->angebot('hm-shirt', 2, Offer::SLOT_BUMP);
+
+        // Das Auswahlfeld zeigt ihn nicht, aber ein PATCH mit dem Handle im
+        // Rumpf geht daran vorbei — und `Basket::allowedBumps()` darf
+        // unverengt bleiben, *weil* die Liste am Angebot markenrein ist.
+        $eigenes = $this->angebot('cw-kurs', 1);
+
+        $this->actingAs($this->user())
+            ->patchJson('/cp/utilities/offers/'.$eigenes->id, [
+                'name' => 'Kurs',
+                'handle' => 'cw-kurs',
+                'product' => 'noten-paket',
+                'amount_cent' => 1000,
+                'slot' => Offer::SLOT_STANDALONE,
+                'active' => true,
+                'bumps' => ['hm-shirt'],
+            ])
+            ->assertJsonValidationErrors('bumps.0');
+
+        $this->assertNull($eigenes->fresh()->bumps);
     }
 
     #[Test]

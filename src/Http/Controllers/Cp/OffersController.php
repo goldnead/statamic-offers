@@ -291,7 +291,17 @@ class OffersController extends CpController
             'bumps' => ['nullable', 'array'],
             'bumps.*' => [
                 'string',
-                Rule::exists('offers', 'handle')->where('slot', Offer::SLOT_BUMP),
+                // **Und aus derselben Marke.** Das Auswahlfeld zeigt nur die
+                // eigenen, aber ein `PATCH` mit einem fremden Handle im Rumpf
+                // geht am Auswahlfeld vorbei — und `Basket::allowedBumps()`
+                // darf unverengt bleiben, *weil* die Liste am Angebot schon
+                // markenrein ist. Ohne diese Zeile stimmt diese Begruendung
+                // nicht mehr, und auf der Kasse von Marke A haenge ein Bump
+                // von Marke B: falscher Umsatz, falsche Rechnung, falscher
+                // Zugang.
+                Rule::exists('offers', 'handle')
+                    ->where('slot', Offer::SLOT_BUMP)
+                    ->where('brand_id', $offer !== null ? $offer->brand_id : Brands::stampId()),
                 Rule::notIn([(string) $request->input('handle')]),
             ],
             'active' => ['boolean'],

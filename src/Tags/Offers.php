@@ -19,10 +19,17 @@ class Offers extends Tags
 {
     protected static $handle = 'offers';
 
-    /** One offer, by handle. */
+    /**
+     * One offer, by handle.
+     *
+     * **Verengt, obwohl der Handle aus der Vorlage kommt und nicht aus der
+     * Anfrage.** Die Sicherheit haenge sonst an der Disziplin jeder einzelnen
+     * Vorlage, und eine Vorlage, die auf mehreren Marken-Sites ausgeliefert
+     * wird, ist der Normalfall und nicht die Ausnahme.
+     */
     public function show(): array|string
     {
-        $offer = Offer::query()->where('handle', (string) $this->params->get('handle', ''))->first();
+        $offer = Offer::query()->forBrand()->where('handle', (string) $this->params->get('handle', ''))->first();
 
         if (! $offer || ! $offer->isSellable()) {
             return $this->parseNoResults();
@@ -35,7 +42,18 @@ class Offers extends Tags
         return $this->parse($this->row($offer));
     }
 
-    /** Every active offer for a slot, in the order they were made. */
+    /**
+     * Every active offer for a slot, in the order they were made.
+     *
+     * **Verengt, und das ist keine Vorsichtsmassnahme, sondern eine
+     * geschlossene Luecke.** Anders als beim Webhook gibt es auf der Website
+     * sehr wohl eine Marke: `brand-context` haengt `SetBrandForSite` in die
+     * `web`-Gruppe und loest sie aus Site, Host oder Pfad auf — auch fuer
+     * anonyme Besucher. Ohne die Verengung bekam ein Besucher der Seite von
+     * Marke A die Namen, Preise, Rabatte und den kaufbaren `buy_handle` der
+     * Angebote von Marke B ausgeliefert und haette darueber sogar kaufen
+     * koennen.
+     */
     public function slot(): array|string
     {
         $slot = (string) $this->params->get('slot', Offer::SLOT_STANDALONE);
@@ -45,6 +63,7 @@ class Offers extends Tags
         }
 
         $offers = Offer::query()
+            ->forBrand()
             ->active()
             ->forSlot($slot)
             ->orderBy('id')

@@ -13,6 +13,18 @@ Offers now carry a `brand_id` and the Control Panel narrows to it: the listing, 
 anything yet" check, the bump picker, the offer picker on the coupons screen, and loading a row to
 edit or delete it. Same seam as `statamic-products`, which has had it since 1.0.0.
 
+**The public website narrows too**, and that one is a closed hole rather than a precaution. Unlike a
+webhook, a public request *does* have a brand: `brand-context` wires `SetBrandForSite` into the `web`
+group and resolves it from site, host or path, for anonymous visitors as well. Without narrowing,
+`{{ offers:slot }}` on brand A's website handed out brand B's names, prices, discounts and buyable
+handle — and a visitor could have bought through it.
+
+**And the bump list is validated against the brand, not just the picker.** The picker only shows your
+own, but a `PATCH` with a foreign handle in the body goes straight past it. That matters beyond the
+Control Panel: `Basket::allowedBumps()` is allowed to stay unnarrowed *because* the list on an offer
+is already brand-clean. Without the rule that reasoning was false, and brand A's checkout could carry
+brand B's bump — wrong revenue, wrong invoice, wrong access.
+
 **Explicitly at those five places, never as a global scope**, and that is the whole care in this
 change. A global scope would also lie on the path the catalogue resolver takes, and a webhook has no
 brand. `Brands::only()` closes when the question cannot be answered, so fulfilling a paid order
