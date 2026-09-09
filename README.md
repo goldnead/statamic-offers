@@ -92,6 +92,18 @@ money moves.
 The same goes for a part the catalogue no longer sells: the bundle stops being offered rather than
 quietly delivering less than was bought.
 
+**And the same goes for the brand.** A bundle whose parts belong to different brands cannot be sold
+either: one invoice line belongs to one brand, with that brand's invoice series, sender and revenue,
+and choosing one of two answers would be guessing whose money it is. Parts that name no brand say
+nothing and contradict nobody — on a single-brand install that is every part. The refusal is logged
+with the offer handle, the parts and the brands they named.
+
+The resolved catalogue entry carries `brand_id`: the **offer's** brand, not the brand of the product
+underneath, the same rule that already gives the offer its own name and its own price.
+`statamic-payments` 1.24.1 and newer stamps a follow-up charge with it instead of inheriting the
+brand of the payment it follows. An offer without a brand sends `0`, which that version reads as
+"names no brand" and inherits, saying so in the log.
+
 **Bundles that grant more than one thing need `statamic-payments` 1.14 or newer.** Before that,
 `grants` had to be a single string and a list fell out of an `is_string()` check — granting nothing
 at all rather than the first item. Rather than sell into that, such a bundle refuses to resolve and

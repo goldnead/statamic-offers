@@ -92,6 +92,12 @@ class Offer extends Model
     protected function casts(): array
     {
         return [
+            // Die Garantie sitzt am Modell und nicht an einer Leseposition.
+            // `statamic-products` castet dieselbe Spalte seit 1.0.0; ohne den
+            // Cast liefert ein Treiber eine Zeichenkette, und jede Stelle, die
+            // die Marke liest, muesste das selbst wissen — ein vergessener
+            // Cast faellt dann nirgends auf.
+            'brand_id' => 'integer',
             'amount_cent' => 'integer',
             'times' => 'integer',
             'trial_days' => 'integer',

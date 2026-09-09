@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.11.2 — 2026-09-09
+
+### Fixed: the catalogue entry names the offer's brand
+
+`statamic-payments` 1.24.1 stamps a follow-up charge with the `brand_id` of the catalogue entry
+instead of inheriting the brand of the payment it follows. The catalogue entry is the only seam
+between the two packages — payments does not know `Offer` and must not, because offers depends on
+payments and not the other way round — and this resolver did not put the key in it.
+
+Two things were wrong at once. The fix over there was dead code for every real upsell, since every
+one of them is an `offer:` handle and landed in the inherit branch. And what the entry *did* carry
+was the `brand_id` of the product underneath, inherited through the array merge: an answer the offer
+never gave, and on a multi-brand install the wrong one.
+
+The entry now carries `(int) $offer->brand_id` — the offer's own, like its name and its price. Zero
+stays zero and is not filled in from the product; over there that reads as "names no brand" and
+inherits, with a line in the log.
+
+The required `statamic-payments` version stays at `^1.15` on purpose. Nothing here needs 1.24.1: an
+older sibling passes the extra key through `Catalogue::find()` and ignores it, so raising the floor
+would block installs that work, in exchange for nothing.
+
+### Changed: a bundle whose parts belong to different brands is not sellable
+
+The same strictness `digital` has had since 1.6.0, and for the same reason. A bundle is one line at
+one price; a line belongs to one brand, with that brand's invoice series, sender and revenue.
+Picking one of two answers would be guessing whose money it is, so the catalogue answers "no such
+thing" and `Checkout::start()` refuses before any money moves. The log line names the offer, its
+parts and the brand each part claimed.
+
+Parts that name no brand contradict nobody — on a single-brand install that is every part, and a
+bundle must not hang on a question nobody asked. A part that names something that is not a brand id
+at all is treated as silence too, but says so with a warning rather than passing for it.
+
 ## 1.11.1 — 2026-09-08
 
 ### Fixed: an offer made outside the Control Panel gets a brand too

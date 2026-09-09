@@ -341,6 +341,20 @@ class ServiceProvider extends AddonServiceProvider
             // steht: eine Regel, nicht zwei.
             'amount_cent' => $option !== null ? $option['amount_cent'] : $offer->effectiveAmountCent(),
             'currency' => $offer->currency(),
+            // **Wem das Angebot gehoert, und nicht wem das Produkt darunter
+            // gehoert.** Verkauft wird das Angebot: dieselbe Regel wie beim
+            // Namen und beim Preis eine Zeile darueber.
+            //
+            // Ohne diesen Schluessel liefe der Fix in `statamic-payments`
+            // 1.24.1 ins Leere — schlimmer noch, der Eintrag trug bis hierher
+            // die geerbte `brand_id` des Produkts aus dem `+`-Merge unten und
+            // behauptete damit etwas, das das Angebot nie gesagt hat.
+            //
+            // Null bleibt Null und wird nicht vom Produkt aufgefuellt. Auf
+            // einem Betrieb ohne Mandanten ist das jede Zeile, und drueben
+            // liest {@see FollowUp::brandFor()} die Null als „nennt keine
+            // Marke" und erbt die der Vorgaengerzahlung — laut, mit `info`.
+            'brand_id' => (int) $offer->brand_id,
             // What the payment line will remember it was sold as. An offer
             // renamed next year must not rewrite an old order.
             'offer' => $offer->handle,
@@ -385,6 +399,12 @@ class ServiceProvider extends AddonServiceProvider
         $grants = [];
         $digital = null;
 
+        // Wem die Teile gehoeren, Handle fuer Handle. Gesammelt statt nur
+        // verglichen, damit die Meldung unten sagen kann, **welches** Teil aus
+        // der Reihe faellt — „ein Buendel widerspricht sich" ohne Namen zwingt
+        // den Betreiber, alle Teile von Hand nachzusehen.
+        $marken = [];
+
         foreach ($offer->productHandles() as $teilHandle) {
             $teil = app(Catalogue::class)->find($teilHandle);
 
@@ -403,6 +423,52 @@ class ServiceProvider extends AddonServiceProvider
                 }
             }
 
+            // **Die Marke muss ueber alle Teile dasselbe sagen, sonst gibt es
+            // das Buendel nicht** — dieselbe Strenge wie bei `digital` direkt
+            // darunter, und aus demselben Grund. Ein Buendel ist *eine* Zeile
+            // zu *einem* Preis; eine Zeile gehoert einer Marke, mit deren
+            // Rechnungsserie, deren Absender und deren Umsatz. Bei zwei
+            // Antworten eine zu waehlen hiesse raten, wessen Geld das ist.
+            //
+            // Dieselbe Lesart wie {@see FollowUp::brandFor()} drueben: eine
+            // Ziffernfolge im Text zaehlt (eine Eloquent-Spalte ohne Cast
+            // liefert genau die), ein Array zaehlt nicht — ein blosser
+            // `(int)`-Cast machte daraus die `1`, also eine echte Marke, die es
+            // zufaellig gibt.
+            $rohMarke = $teil['brand_id'] ?? null;
+            $teilMarke = match (true) {
+                is_int($rohMarke) => $rohMarke,
+                is_string($rohMarke) && ctype_digit($rohMarke) => (int) $rohMarke,
+                default => 0,
+            };
+
+            if ($teilMarke < 1 && $rohMarke !== null && $rohMarke !== 0 && $rohMarke !== '0') {
+                // Geschwiegen und Unsinn gesagt ist nicht dasselbe, und nur das
+                // erste ist harmlos. Behandelt wird beides als Schweigen —
+                // raten waere schlimmer —, aber der Grund steht laut da.
+                Log::warning('statamic-offers: a bundle part names something that is not a usable brand id; it is treated as naming no brand at all.', [
+                    'offer' => $offer->handle,
+                    'product' => $teilHandle,
+                    // Der Typ, und der Wert nur bei einem Skalar: was hier
+                    // steht, kommt aus fremdem Code.
+                    'brand_id_type' => get_debug_type($rohMarke),
+                    'brand_id' => is_scalar($rohMarke) ? $rohMarke : null,
+                ]);
+            }
+
+            // Schweigen widerspricht niemandem. Auf einem Betrieb ohne
+            // Mandanten ist das jedes Teil, und dort darf ein Buendel nicht an
+            // einer Frage haengen, die niemand gestellt hat.
+            //
+            // Gesammelt und **erst nach der Schleife** verglichen, nicht beim
+            // ersten Paar abgebrochen: sonst naehme die einzige Meldung, die es
+            // zu diesem Vorgang gibt, nur die bis dahin gesehenen Teile auf.
+            // Wer das gemeldete Paar korrigiert, liefe bei drei Marken erneut
+            // in denselben Fehler — gemeldet, ohne je vollstaendig zu sein.
+            if ($teilMarke > 0) {
+                $marken[$teilHandle] = $teilMarke;
+            }
+
             if (! array_key_exists('digital', $teil)) {
                 continue;
             }
@@ -419,6 +485,25 @@ class ServiceProvider extends AddonServiceProvider
             }
 
             $digital = $teilDigital;
+        }
+
+        // **Die Marke muss ueber alle Teile dasselbe sagen, sonst gibt es das
+        // Buendel nicht** — dieselbe Strenge wie bei `digital` darueber, und
+        // aus demselben Grund. Ein Buendel ist *eine* Zeile zu *einem* Preis;
+        // eine Zeile gehoert einer Marke, mit deren Rechnungsserie, deren
+        // Absender und deren Umsatz. Bei zwei Antworten eine zu waehlen hiesse
+        // raten, wessen Geld das ist.
+        if (count(array_unique($marken)) > 1) {
+            Log::warning('statamic-offers: a bundle whose parts disagree about the brand they belong to is not sellable; one invoice line cannot belong to two brands.', [
+                'offer' => $offer->handle,
+                'products' => $offer->productHandles(),
+                // Handle => Marke, und zwar aller Teile, die eine nennen.
+                // „Ein Buendel widerspricht sich" ohne Namen zwingt den
+                // Betreiber, alle Teile von Hand nachzusehen.
+                'brands' => $marken,
+            ]);
+
+            return null;
         }
 
         $fakten = [];
