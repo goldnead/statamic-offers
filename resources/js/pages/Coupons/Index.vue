@@ -224,7 +224,7 @@ function generate() {
             push-query
         >
             <template #cell-code="{ row }">
-                <button type="button" class="font-mono text-xs font-medium hover:text-primary" @click="edit(row)">
+                <button type="button" class="text-start font-mono text-xs font-medium hover:text-primary" @click="edit(row)">
                     {{ row.code }}
                 </button>
             </template>

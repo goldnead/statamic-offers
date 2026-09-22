@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.3 — 2026-09-22
+
+### Fixed: offer and coupon titles centered instead of aligning left
+
+The title cell in both listings is a `<button>` so it can open the edit panel, and a browser's
+default `text-align` for `<button>` is `center`. Nothing in the column definition asked for
+that — `Statamic\CP\Column` has no alignment attribute besides `numeric()`, and the cell itself is
+left-aligned — the button just centered its own content inside its own box. It only became
+visible once a title wrapped onto a second line. Both buttons now carry `text-start` explicitly,
+matching the pattern already used for the session buttons in `statamic-clientrooms`.
+
 ## 1.11.2 — 2026-09-09
 
 ### Fixed: the catalogue entry names the offer's brand

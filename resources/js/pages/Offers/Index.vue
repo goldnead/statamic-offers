@@ -342,7 +342,7 @@ const statusColor = (row) => {
             push-query
         >
             <template #cell-name="{ row }">
-                <button type="button" class="font-medium hover:text-primary" @click="edit(row)">{{ row.name }}</button>
+                <button type="button" class="text-start font-medium hover:text-primary" @click="edit(row)">{{ row.name }}</button>
                 <span v-if="!row.sellable" class="block text-2xs text-red-600 dark:text-red-400">
                     {{ t.not_sellable }}
                 </span>
