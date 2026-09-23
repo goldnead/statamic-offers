@@ -6,6 +6,7 @@ use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\OfferHandle;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -223,6 +224,36 @@ final class Offers
         }
 
         return min($hoechstens, $fest);
+    }
+
+    /**
+     * Die Zeitzone, in der Menschen Zeiten lesen und tippen.
+     *
+     * Statamics `display_timezone`, sonst die der Anwendung. Gespeichert wird
+     * weiter in `app.timezone`; umgerechnet wird nur an der Grenze zum
+     * Formular, in {@see self::fromDisplay()} und {@see self::toDisplay()}.
+     */
+    public static function displayTimezone(): string
+    {
+        $zone = config('statamic.system.display_timezone') ?: config('app.timezone', 'UTC');
+
+        return is_string($zone) && $zone !== '' ? $zone : 'UTC';
+    }
+
+    /** Eine im Formular getippte Zeit (Anzeige-Zeitzone) als Zeitpunkt in der Zeitzone der Anwendung. */
+    public static function fromDisplay(?string $value): ?Carbon
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        return Carbon::parse($value, self::displayTimezone())->setTimezone((string) config('app.timezone', 'UTC'));
+    }
+
+    /** Ein gespeicherter Zeitpunkt, wie ihn ein `datetime-local`-Feld in der Anzeige-Zeitzone erwartet. */
+    public static function toDisplay(?\DateTimeInterface $moment, string $format = 'Y-m-d\TH:i'): ?string
+    {
+        return $moment === null ? null : Carbon::instance($moment)->setTimezone(self::displayTimezone())->format($format);
     }
 
     /** Der Pfad vor dem Slug eines Kurzlinks, ohne Schraegstriche. */

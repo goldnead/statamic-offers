@@ -104,7 +104,12 @@ class OffersController extends CpController
             'withdrawalDefaults' => (new Offer)->withdrawalTerms(),
             // Named on the screen next to every date-time field: a deadline
             // typed without knowing which clock it runs on is off by hours.
-            'timezone' => (string) config('app.timezone', 'UTC'),
+            //
+            // Die Anzeige-Zeitzone (`statamic.system.display_timezone`), denn
+            // in ihr wird getippt und gezeigt; gespeichert wird in der der
+            // Anwendung. Vorher stand hier `app.timezone`, und auf einer Site
+            // mit UTC-Datenbank und Berliner Anzeige hiess „18:00" 20:00.
+            'timezone' => Offers::displayTimezone(),
             // Die Laender aus Statamics eigenem Verzeichnis, zweistellig, weil
             // die Kasse und die Rechnung zweistellig rechnen.
             'countries' => $this->countryOptions(),
@@ -414,11 +419,12 @@ class OffersController extends CpController
             : true;
         $data['withdrawal_pdf'] = $request->boolean('withdrawal_pdf');
 
-        // In the application's timezone, which is the one the screen names
-        // next to the field. Stored as-is, not moved to a day boundary: a
-        // launch at 18:00 is a launch at 18:00.
-        $data['available_from'] = ($data['available_from'] ?? null) ? Carbon::parse($data['available_from']) : null;
-        $data['available_until'] = ($data['available_until'] ?? null) ? Carbon::parse($data['available_until']) : null;
+        // Getippt in der Anzeige-Zeitzone (`statamic.system.display_timezone`),
+        // die das Formular neben dem Feld nennt, gespeichert in der der
+        // Anwendung. Nicht auf eine Tagesgrenze geschoben: ein Start um 18:00
+        // ist ein Start um 18:00 auf der Uhr der Person, die ihn eintraegt.
+        $data['available_from'] = Offers::fromDisplay($data['available_from'] ?? null);
+        $data['available_until'] = Offers::fromDisplay($data['available_until'] ?? null);
         $data['access_starts_at'] = ($data['access_starts_at'] ?? null) ? Carbon::parse($data['access_starts_at'])->startOfDay() : null;
 
         // Known keys only, deduplicated, in the library's order rather than
@@ -580,7 +586,7 @@ class OffersController extends CpController
             $data[$key] = trim((string) ($data[$key] ?? '')) ?: null;
         }
 
-        $data['link_switch_at'] = ($data['link_switch_at'] ?? null) ? Carbon::parse($data['link_switch_at']) : null;
+        $data['link_switch_at'] = Offers::fromDisplay($data['link_switch_at'] ?? null);
         $data['link_switch_on_sold_out'] = $request->has('link_switch_on_sold_out')
             ? $request->boolean('link_switch_on_sold_out')
             : true;

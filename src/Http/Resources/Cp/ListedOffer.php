@@ -5,6 +5,7 @@ namespace Goldnead\StatamicOffers\Http\Resources\Cp;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\CpNumber;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Support\OfferUsage;
@@ -123,8 +124,9 @@ class ListedOffer extends JsonResource
                 'quantity_limit' => $this->quantity_limit,
                 // `datetime-local` wants exactly this shape and no zone; the
                 // zone is the app's, and the screen says so beside the field.
-                'available_from' => $this->available_from?->format('Y-m-d\TH:i'),
-                'available_until' => $this->available_until?->format('Y-m-d\TH:i'),
+                // In der Anzeige-Zeitzone, in der das Formular sie auch annimmt.
+                'available_from' => Offers::toDisplay($this->available_from),
+                'available_until' => Offers::toDisplay($this->available_until),
                 'access_starts_at' => $this->access_starts_at?->format('Y-m-d'),
                 'access_days' => $this->access_days,
                 'checkout_fields' => $this->checkout_fields ?? [],
@@ -162,7 +164,7 @@ class ListedOffer extends JsonResource
                 'link_slug' => $this->link_slug,
                 'link_target' => $this->link_target,
                 'link_fallback' => $this->link_fallback,
-                'link_switch_at' => $this->link_switch_at?->format('Y-m-d\TH:i'),
+                'link_switch_at' => Offers::toDisplay($this->link_switch_at),
                 'link_switch_on_sold_out' => (bool) ($this->link_switch_on_sold_out ?? true),
                 'seats' => $this->seats,
             ],
@@ -193,7 +195,7 @@ class ListedOffer extends JsonResource
                 'seats' => $pool->seats,
                 'taken' => $pool->seatRows->count(),
                 'closed' => $pool->isClosed(),
-                'closed_at' => $pool->closed_at?->locale(app()->getLocale())->isoFormat('L LT'),
+                'closed_at' => $pool->closed_at === null ? null : $this->moment($pool->closed_at),
                 'closed_reason' => $pool->closed_reason,
                 'payment_id' => $pool->payment_id,
                 'created_at' => $pool->created_at?->locale(app()->getLocale())->isoFormat('L'),
@@ -314,6 +316,6 @@ class ListedOffer extends JsonResource
     /** The locale's own short date and time, like the coupons screen. */
     protected function moment(Carbon $moment): string
     {
-        return $moment->locale(app()->getLocale())->isoFormat('L LT');
+        return $moment->copy()->setTimezone(Offers::displayTimezone())->locale(app()->getLocale())->isoFormat('L LT');
     }
 }

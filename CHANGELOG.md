@@ -76,6 +76,10 @@ by email, takes seats back and gives them again; access is granted on acceptance
 - The floor of a chosen amount travels to the renewals (`floor_cent` in the coupon terms), and
   `Offers::recurringDiscountCent()` respects it.
 - Every money field in the offer editor says "Cent" and shows the amount it stands for below.
+- Date-time fields of the offer editor (`available_from`, `available_until`, `link_switch_at`) are
+  typed and shown in Statamic's `display_timezone` and stored in `app.timezone`. Before, they were
+  read in `app.timezone`, so on a site with a UTC database and a Berlin display "18:00" meant 20:00.
+  The screen names the display timezone next to the fields.
 
 ### Pay what you want, round two (O1)
 
