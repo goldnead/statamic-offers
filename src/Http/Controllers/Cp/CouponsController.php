@@ -5,7 +5,9 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 use Goldnead\StatamicOffers\Http\Resources\Cp\CouponsCollection;
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\CouponBatch;
+use Goldnead\StatamicOffers\Support\QrDownload;
 use Goldnead\StatamicOffers\Support\Setup;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -211,13 +213,27 @@ class CouponsController extends CpController
             ]),
             'max_uses' => ['nullable', 'integer', 'min:1'],
             'active' => ['boolean'],
+            // O6: wie lange und worauf.
+            'duration' => ['nullable', Rule::in(Coupon::durations())],
+            'duration_cycles' => ['nullable', 'integer', 'min:2', 'max:120'],
+            'applies_to' => ['nullable', Rule::in(Coupon::scopes())],
+            'funnel_wide' => ['nullable', 'boolean'],
+            // O4: die Zielseite des Gutschein-Links.
+            'link_url' => ['nullable', 'string', 'max:2000', 'regex:#^(/|https?://)#i'],
         ], [
             'offers.*.exists' => __('statamic-offers::messages.coupon_offers_invalid'),
+            'link_url.regex' => __('statamic-offers::messages.field_link_url_invalid'),
         ]);
 
         $validator->after(function (ValidatorInstance $validator) use ($request, $coupon) {
             $this->checkExactlyOneDiscount($validator, $request);
             $this->checkCodeIsFree($validator, $request, $coupon);
+
+            // Eine Wiederholung ohne Anzahl ist keine Anweisung. Gespeichert
+            // haette sie still wie „nur die erste Zahlung" gewirkt.
+            if ($request->input('duration') === Coupon::DURATION_REPEATING && ! $request->filled('duration_cycles')) {
+                $validator->errors()->add('duration_cycles', __('statamic-offers::messages.coupon_duration_cycles_required'));
+            }
         });
 
         $data = $validator->validate();
@@ -232,6 +248,18 @@ class CouponsController extends CpController
         $data['name'] = $data['name'] ?? null;
         $data['max_uses'] = $data['max_uses'] ?? null;
 
+        // Ein Client, der die Felder nicht kennt, sagt nichts, und nichts ist
+        // der Stand vor 1.12: erste Zahlung, ganzer Korb. Die Anzahl nur bei
+        // `repeating`, sonst wirkte sie beim naechsten Umstellen, ohne dass
+        // jemand sie bestaetigt hat.
+        $data['duration'] = ($data['duration'] ?? null) ?: Coupon::DURATION_ONCE;
+        $data['duration_cycles'] = $data['duration'] === Coupon::DURATION_REPEATING && isset($data['duration_cycles'])
+            ? (int) $data['duration_cycles']
+            : null;
+        $data['applies_to'] = ($data['applies_to'] ?? null) ?: Coupon::APPLIES_ORDER;
+        $data['funnel_wide'] = $request->boolean('funnel_wide');
+        $data['link_url'] = trim((string) ($data['link_url'] ?? '')) ?: null;
+
         // Duplicates would be shown twice and counted twice; the order is kept
         // because it is the order somebody chose.
         $data['offers'] = array_values(array_unique(array_filter(
@@ -245,6 +273,24 @@ class CouponsController extends CpController
         $data['ends_at'] = $this->endOfDay($data['ends_at'] ?? null);
 
         return $data;
+    }
+
+    /**
+     * Der QR-Code eines Links dieses Gutscheins, als Download.
+     *
+     * `link` ist der Schluessel aus {@see Coupon::links()}, nie eine Adresse:
+     * wer hier eine beliebige Adresse kodieren koennte, haette hinter dem
+     * Control Panel einen QR-Erzeuger fuer fremde Links.
+     */
+    public function qr(Request $request, Coupon $coupon, string $format)
+    {
+        $this->authorizeAccess();
+
+        $url = $coupon->linkFor((string) $request->query('link', 'page'));
+
+        abort_if($url === null, 404);
+
+        return QrDownload::response($url, $format, 'qr-'.mb_strtolower($coupon->code));
     }
 
     protected function checkExactlyOneDiscount(ValidatorInstance $validator, Request $request): void
@@ -409,6 +455,29 @@ class CouponsController extends CpController
             'field_max_uses' => __('statamic-offers::messages.coupon_field_max_uses'),
             'field_max_uses_help' => __('statamic-offers::messages.coupon_field_max_uses_help'),
             'field_active' => __('statamic-offers::messages.coupon_field_active'),
+            'field_duration' => __('statamic-offers::messages.coupon_field_duration'),
+            'field_duration_help' => __('statamic-offers::messages.coupon_field_duration_help'),
+            'duration_once' => __('statamic-offers::messages.coupon_duration_once'),
+            'duration_repeating' => __('statamic-offers::messages.coupon_duration_repeating'),
+            'duration_forever' => __('statamic-offers::messages.coupon_duration_forever'),
+            'field_duration_cycles' => __('statamic-offers::messages.coupon_field_duration_cycles'),
+            'field_duration_cycles_help' => __('statamic-offers::messages.coupon_field_duration_cycles_help'),
+            'field_applies_to' => __('statamic-offers::messages.coupon_field_applies_to'),
+            'applies_order' => __('statamic-offers::messages.coupon_applies_order'),
+            'applies_main' => __('statamic-offers::messages.coupon_applies_main'),
+            'applies_bumps' => __('statamic-offers::messages.coupon_applies_bumps'),
+            'field_funnel_wide' => __('statamic-offers::messages.coupon_field_funnel_wide'),
+            'field_funnel_wide_help' => __('statamic-offers::messages.coupon_field_funnel_wide_help'),
+            'field_link_url' => __('statamic-offers::messages.coupon_field_link_url'),
+            'field_link_url_help' => __('statamic-offers::messages.coupon_field_link_url_help'),
+            'links' => __('statamic-offers::messages.coupon_links'),
+            'links_help' => __('statamic-offers::messages.coupon_links_help', ['parameter' => Offers::couponParameter()]),
+            'links_save_first' => __('statamic-offers::messages.coupon_links_save_first'),
+            'link_copy' => __('statamic-offers::messages.link_copy'),
+            'link_copied' => __('statamic-offers::messages.link_copied'),
+            'link_download_svg' => __('statamic-offers::messages.link_download_svg'),
+            'link_download_png' => __('statamic-offers::messages.link_download_png'),
+            'link_qr' => __('statamic-offers::messages.link_qr'),
             'generate' => __('statamic-offers::messages.coupons_generate'),
             'generate_title' => __('statamic-offers::messages.coupons_generate_title'),
             'generate_help' => __('statamic-offers::messages.coupons_generate_help'),

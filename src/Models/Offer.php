@@ -51,6 +51,23 @@ use Illuminate\Support\Carbon;
  * @property array<mixed>|null $pricing_options — rohes JSON, mehrere
  *                                              Zahlweisen zur Auswahl in der Kasse. Leer heisst „ein Preis".
  *                                              Gelesen wird immer ueber {@see self::pricingOptions()}.
+ * @property string|null $price_mode — `fixed` oder `pwyw`, siehe {@see self::isPayWhatYouWant()}.
+ * @property int|null $pwyw_min_cent
+ * @property int|null $pwyw_suggested_cent
+ * @property int|null $pwyw_max_cent
+ * @property array<mixed>|null $pwyw_thanks — roh; gelesen ueber {@see self::thankYouFor()}.
+ * @property int|null $setup_fee_cent
+ * @property string|null $setup_fee_label
+ * @property string|null $country_mode — `all`, `only` oder `except`.
+ * @property array<mixed>|null $countries — roh; gelesen ueber {@see self::countryList()}.
+ * @property string|null $link_slug
+ * @property string|null $link_target
+ * @property string|null $link_fallback
+ * @property Carbon|null $link_switch_at
+ * @property bool $link_switch_on_sold_out
+ * @property int $link_hits_target
+ * @property int $link_hits_fallback
+ * @property int|null $seats
  * @property string $slot
  * @property bool $active
  * @property int $shown_count
@@ -87,6 +104,27 @@ class Offer extends Model
     /** Rhythmus ohne Ende, bis gekuendigt wird. */
     public const PRICING_SUBSCRIPTION = 'abo';
 
+    /** Der Preis steht fest: eigener Preis, Katalogpreis oder Prozent davon. */
+    public const PRICE_FIXED = 'fixed';
+
+    /** Zahl, was du willst: ab einem Mindestpreis, auf Wunsch bis zu einer Obergrenze. */
+    public const PRICE_PWYW = 'pwyw';
+
+    /** Weltweit kaufbar. */
+    public const COUNTRIES_ALL = 'all';
+
+    /** Nur in den genannten Laendern. */
+    public const COUNTRIES_ONLY = 'only';
+
+    /** Ueberall ausser in den genannten Laendern. */
+    public const COUNTRIES_EXCEPT = 'except';
+
+    /** Der Kurzlink fuehrt zum Angebot (Ziel A). */
+    public const LINK_TARGET = 'target';
+
+    /** Der Kurzlink fuehrt zum zweiten Ziel (Ziel B), weil Stichtag oder Kontingent erreicht sind. */
+    public const LINK_FALLBACK = 'fallback';
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -120,6 +158,17 @@ class Offer extends Model
             'quantity_limit' => 'integer',
             'available_from' => 'datetime',
             'available_until' => 'datetime',
+            'pwyw_min_cent' => 'integer',
+            'pwyw_suggested_cent' => 'integer',
+            'pwyw_max_cent' => 'integer',
+            'pwyw_thanks' => 'array',
+            'setup_fee_cent' => 'integer',
+            'countries' => 'array',
+            'link_switch_at' => 'datetime',
+            'link_switch_on_sold_out' => 'boolean',
+            'link_hits_target' => 'integer',
+            'link_hits_fallback' => 'integer',
+            'seats' => 'integer',
         ];
     }
 
@@ -416,6 +465,13 @@ class Offer extends Model
      */
     public function effectiveAmountCent(): ?int
     {
+        // Bei „Zahl, was du willst" ist das die Untergrenze: der Betrag, zu dem
+        // das Angebot mindestens verkauft wird. Was die Kaeuferin waehlt, steht
+        // im Handle (`offer:x:=2500`) und wird dort gegen diese Grenze geprueft.
+        if ($this->isPayWhatYouWant()) {
+            return $this->pwywMinCent();
+        }
+
         if ($this->amount_cent !== null) {
             return $this->amount_cent;
         }
@@ -445,6 +501,12 @@ class Offer extends Model
      */
     public function effectiveCompareAtCent(): ?int
     {
+        // Ein durchgestrichener Preis neben einem frei gewaehlten waere eine
+        // Behauptung ueber einen Rabatt, den es nicht gibt.
+        if ($this->isPayWhatYouWant()) {
+            return null;
+        }
+
         if ($this->compare_at_cent !== null) {
             return $this->compare_at_cent;
         }
@@ -454,6 +516,301 @@ class Offer extends Model
         }
 
         return null;
+    }
+
+    /** Ob die Kaeuferin den Betrag selbst waehlt. */
+    public function isPayWhatYouWant(): bool
+    {
+        return $this->price_mode === self::PRICE_PWYW;
+    }
+
+    /** Der kleinste Betrag, den die Kaeuferin waehlen darf. Null ist erlaubt. */
+    public function pwywMinCent(): int
+    {
+        return max(0, (int) ($this->pwyw_min_cent ?? 0));
+    }
+
+    /**
+     * Der groesste Betrag.
+     *
+     * **Immer eine Grenze, auch ohne eigene.** Ohne sie waere ein vertippter
+     * Betrag mit drei Nullen zu viel eine echte Abbuchung, und ein Kartenlimit
+     * ist keine Plausibilitaetspruefung. Die Vorgabe steht in der Config.
+     */
+    public function pwywMaxCent(): int
+    {
+        $eigene = $this->pwyw_max_cent;
+
+        if (is_int($eigene) && $eigene > 0) {
+            return max($eigene, $this->pwywMinCent());
+        }
+
+        return max((int) config('statamic-offers.pay_what_you_want.max_cent', 500000), $this->pwywMinCent());
+    }
+
+    /** Der Vorschlag, mit dem das Eingabefeld startet. Ohne Vorschlag der Mindestpreis. */
+    public function pwywSuggestedCent(): int
+    {
+        $vorschlag = $this->pwyw_suggested_cent;
+
+        if (! is_int($vorschlag)) {
+            return $this->pwywMinCent();
+        }
+
+        return min(max($vorschlag, $this->pwywMinCent()), $this->pwywMaxCent());
+    }
+
+    /**
+     * Darf dieser Betrag gezahlt werden?
+     *
+     * Nur bei „Zahl, was du willst", nur ganze kleinste Einheiten, nur zwischen
+     * den Grenzen. Das ist die eine Stelle, an der ein Betrag aus dem Browser
+     * geglaubt wird, und sie glaubt ihm nur innerhalb dessen, was die Person
+     * im Control Panel erlaubt hat.
+     */
+    public function acceptsAmount(int $cent): bool
+    {
+        return $this->isPayWhatYouWant()
+            && $cent >= $this->pwywMinCent()
+            && $cent <= $this->pwywMaxCent();
+    }
+
+    /**
+     * Der Danke-Text zu einem gezahlten Betrag, oder null.
+     *
+     * Gewaehlt wird die hoechste Stufe, die der Betrag erreicht. Die Reihenfolge
+     * im Formular spielt keine Rolle: wer die 50-Euro-Stufe vor die 25-Euro-Stufe
+     * zieht, meint trotzdem nicht, dass 60 Euro den kleineren Dank bekommen.
+     */
+    public function thankYouFor(int $cent): ?string
+    {
+        $treffer = null;
+        $schwelle = -1;
+
+        foreach ($this->thankYouTiers() as $stufe) {
+            if ($cent >= $stufe['from_cent'] && $stufe['from_cent'] > $schwelle) {
+                $treffer = $stufe['text'];
+                $schwelle = $stufe['from_cent'];
+            }
+        }
+
+        return $treffer;
+    }
+
+    /**
+     * Die Danke-Stufen, gesaeubert und aufsteigend.
+     *
+     * @return list<array{from_cent: int, text: string}>
+     */
+    public function thankYouTiers(): array
+    {
+        $stufen = [];
+
+        foreach ((array) $this->pwyw_thanks as $zeile) {
+            if (! is_array($zeile)) {
+                continue;
+            }
+
+            $ab = $zeile['from_cent'] ?? null;
+            $text = is_string($zeile['text'] ?? null) ? trim($zeile['text']) : '';
+
+            if (! is_numeric($ab) || (int) $ab < 0 || $text === '') {
+                continue;
+            }
+
+            $stufen[] = ['from_cent' => (int) $ab, 'text' => $text];
+        }
+
+        usort($stufen, fn (array $a, array $b) => $a['from_cent'] <=> $b['from_cent']);
+
+        return $stufen;
+    }
+
+    /**
+     * Die Einrichtungsgebuehr, oder null.
+     *
+     * Nur ein positiver Betrag. Ob sie in einem Kauf anfaellt, entscheidet der
+     * Korb: nur wenn die gewaehlte Zahlweise einen Rhythmus hat.
+     */
+    public function setupFeeCent(): ?int
+    {
+        $gebuehr = $this->setup_fee_cent;
+
+        return is_int($gebuehr) && $gebuehr > 0 ? $gebuehr : null;
+    }
+
+    /** Wie die Gebuehr auf Kasse und Rechnung heisst. */
+    public function setupFeeName(): string
+    {
+        $eigene = trim((string) $this->setup_fee_label);
+
+        return $eigene !== ''
+            ? $eigene
+            : (string) __('statamic-offers::messages.setup_fee_line', ['name' => $this->name]);
+    }
+
+    /**
+     * Was heute zu zahlen ist, zur Anzeige.
+     *
+     * Die erste Rate, oder der bezahlte Testzeitraum, plus die Einrichtungs-
+     * gebuehr, wenn die Zahlweise einen Rhythmus hat. Nur zum Anzeigen: was
+     * abgebucht wird, rechnet der Katalog Zeile fuer Zeile.
+     *
+     * @param  string|null  $optionKey  die gewaehlte Zahlweise, falls das Angebot mehrere fuehrt
+     */
+    public function firstPaymentCent(?string $optionKey = null): ?int
+    {
+        $option = $optionKey === null ? null : $this->pricingOption($optionKey);
+        $betrag = $option !== null ? $option['amount_cent'] : $this->effectiveAmountCent();
+
+        if ($betrag === null) {
+            return null;
+        }
+
+        $intervall = $option !== null ? $option['interval'] : $this->interval;
+
+        if (! is_string($intervall) || trim($intervall) === '') {
+            return $betrag;
+        }
+
+        $testtage = $option !== null ? $option['trial_days'] : $this->trial_days;
+        $testbetrag = $option !== null ? $option['trial_amount_cent'] : $this->trial_amount_cent;
+
+        if (is_int($testtage) && $testtage > 0 && is_int($testbetrag) && $testbetrag < $betrag) {
+            $betrag = $testbetrag;
+        }
+
+        return $betrag + ($this->setupFeeCent() ?? 0);
+    }
+
+    /** Hat die Zahlweise, die gekauft wird, einen Rhythmus? */
+    public function isRecurring(?string $optionKey = null): bool
+    {
+        $option = $optionKey === null ? null : $this->pricingOption($optionKey);
+        $intervall = $option !== null ? $option['interval'] : $this->interval;
+
+        return is_string($intervall) && trim($intervall) !== '';
+    }
+
+    /**
+     * Die Laender der Regel, als zweistellige Codes in Grossbuchstaben.
+     *
+     * @return list<string>
+     */
+    public function countryList(): array
+    {
+        $codes = [];
+
+        foreach ((array) $this->countries as $code) {
+            if (is_string($code) && preg_match('/^[A-Za-z]{2}$/', trim($code)) === 1) {
+                $codes[] = strtoupper(trim($code));
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    /** Die Regel, die wirklich gilt. Eine Liste ohne Laender ist keine Regel. */
+    public function countryMode(): string
+    {
+        $modus = in_array($this->country_mode, [self::COUNTRIES_ONLY, self::COUNTRIES_EXCEPT], true)
+            ? $this->country_mode
+            : self::COUNTRIES_ALL;
+
+        return $this->countryList() === [] ? self::COUNTRIES_ALL : $modus;
+    }
+
+    /**
+     * Darf jemand aus diesem Land kaufen?
+     *
+     * **Ohne Land nein, sobald es eine Regel gibt.** Die Regel laesst sich dann
+     * nicht pruefen, und sie durchzuwinken hiesse, sie gilt nur fuer Kaeufer,
+     * die ihr Land freiwillig nennen. Wer eine Regel setzt, muss das Land in der
+     * Kasse abfragen; ein Angebot ohne Regel braucht es nicht.
+     */
+    public function isAvailableIn(?string $country): bool
+    {
+        $modus = $this->countryMode();
+
+        if ($modus === self::COUNTRIES_ALL) {
+            return true;
+        }
+
+        $code = strtoupper(trim((string) $country));
+
+        if (preg_match('/^[A-Z]{2}$/', $code) !== 1) {
+            return false;
+        }
+
+        $gelistet = in_array($code, $this->countryList(), true);
+
+        return $modus === self::COUNTRIES_ONLY ? $gelistet : ! $gelistet;
+    }
+
+    /**
+     * Wie viele Zugaenge ein Kauf verteilt, oder null fuer den gewoehnlichen Fall.
+     *
+     * Ab zwei. Ein Platz ist ein gewoehnlicher Kauf, und ihn als Kontingent zu
+     * fuehren hiesse, der Kaeuferin ihren eigenen Zugang vorzuenthalten, bis sie
+     * sich selbst einlaedt.
+     */
+    public function seatCount(): ?int
+    {
+        $plaetze = $this->seats;
+
+        return is_int($plaetze) && $plaetze >= 2 ? $plaetze : null;
+    }
+
+    /** Die oeffentliche Adresse des Kurzlinks, oder null. */
+    public function shortLinkUrl(): ?string
+    {
+        $slug = trim((string) $this->link_slug);
+
+        if ($slug === '' || trim((string) $this->link_target) === '') {
+            return null;
+        }
+
+        return Offers::publicUrl(Offers::linkPrefix().'/'.$slug);
+    }
+
+    /**
+     * Wohin der Kurzlink gerade fuehrt: `target` oder `fallback`.
+     *
+     * Umgeschaltet wird, sobald der Stichtag vorbei ist (der eigene des Links,
+     * sonst das Verkaufsende des Angebots) oder, wenn gewuenscht, sobald das
+     * Kontingent verkauft ist. Ohne zweites Ziel bleibt es beim ersten: ein
+     * 404 auf einem gedruckten Flyer ist schlimmer als eine Seite, die
+     * „ausverkauft" sagt.
+     */
+    public function linkDestination(): string
+    {
+        if (trim((string) $this->link_fallback) === '') {
+            return self::LINK_TARGET;
+        }
+
+        $stichtag = $this->link_switch_at ?? $this->available_until;
+
+        if ($stichtag !== null && Carbon::now()->gte($stichtag)) {
+            return self::LINK_FALLBACK;
+        }
+
+        if ($this->link_switch_on_sold_out ?? true) {
+            $rest = $this->remainingQuantity();
+
+            if ($rest !== null && $rest <= 0) {
+                return self::LINK_FALLBACK;
+            }
+        }
+
+        return self::LINK_TARGET;
+    }
+
+    /** Ein Aufruf mehr fuer dieses Ziel, ohne vorher zu lesen. */
+    public function recordLinkHit(string $destination): void
+    {
+        static::query()->whereKey($this->getKey())->increment(
+            $destination === self::LINK_FALLBACK ? 'link_hits_fallback' : 'link_hits_target'
+        );
     }
 
     /** The percentage, or null when the column holds nothing usable. */

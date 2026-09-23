@@ -118,6 +118,43 @@ class Offers extends Tags
             // For the checkout: which fields to ask, and the terms to show.
             'checkout_fields' => $offer->checkoutFields(),
             'withdrawal' => $offer->withdrawalTerms(),
+            // Zahl, was du willst: die Grenzen fuer das Eingabefeld. Geprueft
+            // wird trotzdem auf dem Server; das hier ist nur die Vorbelegung.
+            'pay_what_you_want' => $offer->isPayWhatYouWant(),
+            'pwyw_min_cent' => $offer->isPayWhatYouWant() ? $offer->pwywMinCent() : null,
+            'pwyw_suggested_cent' => $offer->isPayWhatYouWant() ? $offer->pwywSuggestedCent() : null,
+            'pwyw_max_cent' => $offer->isPayWhatYouWant() ? $offer->pwywMaxCent() : null,
+            // Einrichtungsgebuehr und was heute faellig ist, zum Anzeigen.
+            'setup_fee_cent' => $offer->setupFeeCent(),
+            'setup_fee_name' => $offer->setupFeeCent() === null ? null : $offer->setupFeeName(),
+            'first_payment_cent' => $offer->firstPaymentCent(),
+            // Die Laenderregel, damit eine Kasse das Land abfragt, wenn es eine gibt.
+            'country_mode' => $offer->countryMode(),
+            'countries' => $offer->countryList(),
+            'short_link' => $offer->shortLinkUrl(),
+            'seats' => $offer->seatCount(),
+            // Der Parameter, der einen Gutschein vorbelegt.
+            'coupon_parameter' => \Goldnead\StatamicOffers\Offers::couponParameter(),
         ];
+    }
+
+    /**
+     * Der Danke-Text zu einem frei gewaehlten Betrag.
+     *
+     * {{ offers:thanks handle="workshop" amount_cent="{{ payment:amount_cent }}" }}
+     *
+     * Leer, wenn keine Stufe passt. `handle` darf auch der Katalog-Handle mit
+     * Betrag sein (`offer:workshop:=2500`), dann ohne `amount_cent`.
+     */
+    public function thanks(): string
+    {
+        $handle = (string) $this->params->get('handle', '');
+        $betrag = $this->params->get('amount_cent');
+
+        if (! str_starts_with($handle, Offer::prefix())) {
+            $handle = Offer::prefix().$handle;
+        }
+
+        return (string) \Goldnead\StatamicOffers\Offers::thankYouFor($handle, is_numeric($betrag) ? (int) $betrag : null);
     }
 }

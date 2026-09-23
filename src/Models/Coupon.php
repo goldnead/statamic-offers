@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers\Models;
 
+use Goldnead\StatamicOffers\Offers;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -27,9 +28,32 @@ use Illuminate\Support\Facades\DB;
  * @property int|null $max_uses
  * @property int $used_count
  * @property bool $active
+ * @property string|null $duration — `once`, `repeating` oder `forever`.
+ * @property int|null $duration_cycles — bei `repeating`: fuer wie viele Zahlungen, die erste mitgezaehlt.
+ * @property string|null $applies_to — `order`, `main` oder `bumps`.
+ * @property bool $funnel_wide
+ * @property string|null $link_url
  */
 class Coupon extends Model
 {
+    /** Nur die erste Zahlung. Das, was jeder Gutschein vor 1.12 tat. */
+    public const DURATION_ONCE = 'once';
+
+    /** Die ersten `duration_cycles` Zahlungen, die erste mitgezaehlt. */
+    public const DURATION_REPEATING = 'repeating';
+
+    /** Jede Zahlung, solange das Abo laeuft. */
+    public const DURATION_FOREVER = 'forever';
+
+    /** Hauptangebot und Bumps. Der Stand vor 1.12. */
+    public const APPLIES_ORDER = 'order';
+
+    /** Nur das Hauptangebot. */
+    public const APPLIES_MAIN = 'main';
+
+    /** Nur die Bumps. */
+    public const APPLIES_BUMPS = 'bumps';
+
     protected $table = 'offer_coupons';
 
     protected $guarded = [];
@@ -45,7 +69,21 @@ class Coupon extends Model
             'max_uses' => 'integer',
             'used_count' => 'integer',
             'active' => 'boolean',
+            'duration_cycles' => 'integer',
+            'funnel_wide' => 'boolean',
         ];
+    }
+
+    /** @return list<string> */
+    public static function durations(): array
+    {
+        return [self::DURATION_ONCE, self::DURATION_REPEATING, self::DURATION_FOREVER];
+    }
+
+    /** @return list<string> */
+    public static function scopes(): array
+    {
+        return [self::APPLIES_ORDER, self::APPLIES_MAIN, self::APPLIES_BUMPS];
     }
 
     /** Codes are typed by people, so they are matched the way people type them. */
@@ -85,6 +123,155 @@ class Coupon extends Model
         $only = $this->offers ?? [];
 
         return $only === [] || in_array($offer->handle, $only, true);
+    }
+
+    /** Die Dauer, die gilt. Ein unbekannter Wert ist die erste Zahlung, wie vor 1.12. */
+    public function duration(): string
+    {
+        return in_array($this->duration, self::durations(), true) ? $this->duration : self::DURATION_ONCE;
+    }
+
+    /** Worauf der Code wirkt. Ein unbekannter Wert ist der ganze Korb, wie vor 1.12. */
+    public function scope(): string
+    {
+        return in_array($this->applies_to, self::scopes(), true) ? $this->applies_to : self::APPLIES_ORDER;
+    }
+
+    /**
+     * Gilt der Code fuer die n-te Zahlung eines Abos? Die erste ist 1.
+     *
+     * `repeating` ohne Anzahl gilt wie `once`: eine Wiederholung, von der
+     * niemand gesagt hat, wie oft, ist keine Anweisung, fuer immer zu
+     * rabattieren.
+     */
+    public function appliesToPayment(int $number): bool
+    {
+        if ($number < 1) {
+            return false;
+        }
+
+        return match ($this->duration()) {
+            self::DURATION_FOREVER => true,
+            self::DURATION_REPEATING => $number <= max(1, (int) $this->duration_cycles),
+            default => $number === 1,
+        };
+    }
+
+    /**
+     * Gilt der Code auch fuer spaetere Angebote im selben Funnel-Lauf?
+     *
+     * Hier steht nur die Antwort. Den Code von Schritt zu Schritt zu tragen ist
+     * Sache des Funnels, der den Lauf kennt.
+     */
+    public function coversFollowUps(): bool
+    {
+        return (bool) $this->funnel_wide;
+    }
+
+    /**
+     * Was eine Folgezahlung ueber diesen Code wissen muss.
+     *
+     * Eingefroren, nicht verwiesen: wird der Gutschein spaeter geaendert oder
+     * geloescht, gilt fuer ein laufendes Abo weiter, was beim Kauf zugesagt war.
+     *
+     * @return array{code: string, percent: int|null, amount_cent: int|null, currency: string|null, duration: string, cycles: int|null}
+     */
+    public function terms(): array
+    {
+        return [
+            'code' => $this->code,
+            'percent' => $this->percent,
+            'amount_cent' => $this->percent === null ? $this->amount_cent : null,
+            'currency' => $this->percent === null && $this->currency ? mb_strtoupper($this->currency) : null,
+            'duration' => $this->duration(),
+            'cycles' => $this->duration() === self::DURATION_REPEATING ? max(1, (int) $this->duration_cycles) : null,
+        ];
+    }
+
+    /**
+     * Der Gutschein-Link: die Zielseite mit dem Code als Parameter.
+     *
+     * Ohne eigene Zielseite die Startseite der Site. Eine relative Zielseite
+     * wird absolut, denn ein Link auf einem Flyer hat keinen Kontext, gegen den
+     * er aufgeloest werden koennte.
+     */
+    public function link(): string
+    {
+        $ziel = trim((string) $this->link_url);
+
+        return self::withCode($ziel === '' ? Offers::publicUrl('/') : self::absolute($ziel), $this->code);
+    }
+
+    /**
+     * Alle Links, unter denen dieser Code vorbelegt ankommt.
+     *
+     * Die Zielseite, und jedes Angebot mit Kurzlink, fuer das der Code gilt.
+     * Der Kurzlink reicht die Anfrage an sein Ziel weiter, also kommt der Code
+     * auch nach dem Umschalten der Weiche an.
+     *
+     * @return list<array{key: string, label: string, url: string}>
+     */
+    public function links(): array
+    {
+        $ziel = trim((string) $this->link_url);
+
+        $links = [[
+            'key' => 'page',
+            'label' => $ziel === '' ? Offers::publicUrl('/') : $ziel,
+            'url' => $this->link(),
+        ]];
+
+        $angebote = Offer::query()
+            ->forBrand()
+            ->whereNotNull('link_slug')
+            ->where('link_slug', '!=', '')
+            ->orderBy('name')
+            ->get();
+
+        foreach ($angebote as $offer) {
+            $kurz = $offer->shortLinkUrl();
+
+            if ($kurz === null || ! $this->appliesTo($offer)) {
+                continue;
+            }
+
+            $links[] = [
+                'key' => 'offer:'.$offer->handle,
+                'label' => $offer->name,
+                'url' => self::withCode($kurz, $this->code),
+            ];
+        }
+
+        return $links;
+    }
+
+    /** Ein Link dieses Gutscheins, oder null, wenn er keinen mit diesem Schluessel fuehrt. */
+    public function linkFor(string $key): ?string
+    {
+        foreach ($this->links() as $link) {
+            if ($link['key'] === $key) {
+                return $link['url'];
+            }
+        }
+
+        return null;
+    }
+
+    /** Den Code an eine Adresse haengen, ohne deren eigene Parameter zu verlieren. */
+    public static function withCode(string $url, string $code): string
+    {
+        $parameter = Offers::couponParameter();
+        [$ohneAnker, $anker] = array_pad(explode('#', $url, 2), 2, null);
+
+        $trenner = str_contains($ohneAnker, '?') ? '&' : '?';
+
+        return $ohneAnker.$trenner.rawurlencode($parameter).'='.rawurlencode($code)
+            .($anker === null ? '' : '#'.$anker);
+    }
+
+    protected static function absolute(string $ziel): string
+    {
+        return preg_match('#^https?://#i', $ziel) === 1 ? $ziel : Offers::publicUrl($ziel);
     }
 
     /**

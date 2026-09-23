@@ -4,7 +4,7 @@ import { Head, router } from '@statamic/cms/inertia';
 import {
     Header, Badge, Listing, EmptyStateMenu, EmptyStateItem, DocsCallout,
     Button, CommandPaletteItem, Stack, Heading, ConfirmationModal,
-    Field, Input, Combobox, Switch, DropdownItem, Alert,
+    Field, Input, Combobox, Switch, DropdownItem, Alert, Select, Subheading,
 } from '@statamic/cms/ui';
 
 /**
@@ -41,6 +41,37 @@ const blank = () => ({
     starts_at: null, ends_at: null,
     max_uses: null,
     active: true,
+    // Der Stand vor 1.12: erste Zahlung, ganzer Korb.
+    duration: 'once', duration_cycles: null,
+    applies_to: 'order', funnel_wide: false,
+    link_url: '',
+});
+
+const durations = computed(() => [
+    { value: 'once', label: props.t.duration_once },
+    { value: 'repeating', label: props.t.duration_repeating },
+    { value: 'forever', label: props.t.duration_forever },
+]);
+
+const scopes = computed(() => [
+    { value: 'order', label: props.t.applies_order },
+    { value: 'main', label: props.t.applies_main },
+    { value: 'bumps', label: props.t.applies_bumps },
+]);
+
+/**
+ * Die Links des gerade bearbeiteten Gutscheins, vom Server gebaut. Nur solange
+ * Code und Zielseite im Formular dieselben sind wie gespeichert: sonst zeigte
+ * der QR-Code einen Link, den es so noch nicht gibt.
+ */
+const savedLinks = computed(() => {
+    const row = editing.value;
+
+    if (!row) return [];
+
+    const same = row.edit_values.code === form.value.code && (row.edit_values.link_url ?? '') === (form.value.link_url ?? '');
+
+    return same ? (row.links ?? []) : [];
 });
 
 /**
@@ -235,6 +266,7 @@ function generate() {
 
             <template #cell-discount="{ row }">
                 <span v-if="row.discount" class="tabular-nums">{{ row.discount }}</span>
+                <span v-if="row.duration_note" class="block text-2xs text-gray-500 dark:text-gray-400">{{ row.duration_note }}</span>
             </template>
 
             <template #cell-validity="{ row }">
@@ -359,9 +391,71 @@ function generate() {
                         <Input v-model.number="form.max_uses" type="number" min="1" :placeholder="t.usage_unlimited" />
                     </Field>
 
+                    <!-- Wie lange und worauf. Ohne Aenderung genau das, was
+                         jeder Gutschein vorher tat. -->
+                    <!-- Untereinander, nicht nebeneinander: im schmalen Stapel
+                         schnitt die zweite Spalte die Auswahl ab. -->
+                    <div class="space-y-5">
+                        <Field :label="t.field_duration" :instructions="t.field_duration_help" :error="errors.duration">
+                            <Select v-model="form.duration" :options="durations" />
+                        </Field>
+
+                        <Field
+                            v-if="form.duration === 'repeating'"
+                            :label="t.field_duration_cycles"
+                            :instructions="t.field_duration_cycles_help"
+                            :error="errors.duration_cycles"
+                            required
+                        >
+                            <Input
+                                :model-value="form.duration_cycles"
+                                type="number"
+                                min="2"
+                                @update:model-value="form.duration_cycles = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+                    </div>
+
+                    <Field :label="t.field_applies_to" :error="errors.applies_to">
+                        <Select v-model="form.applies_to" :options="scopes" />
+                    </Field>
+
+                    <Field :label="t.field_funnel_wide" :instructions="t.field_funnel_wide_help" :error="errors.funnel_wide">
+                        <Switch v-model="form.funnel_wide" />
+                    </Field>
+
                     <Field :label="t.field_active">
                         <Switch v-model="form.active" />
                     </Field>
+
+                    <!-- Der Link mit vorbelegtem Code, fuer Flyer und Aushang. -->
+                    <Subheading :text="t.links" />
+
+                    <Field :label="t.field_link_url" :instructions="t.field_link_url_help" :error="errors.link_url">
+                        <Input v-model="form.link_url" class="font-mono" placeholder="/anmeldung" />
+                    </Field>
+
+                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ t.links_help }}</p>
+
+                    <div
+                        v-for="link in savedLinks"
+                        :key="link.key"
+                        class="flex gap-4 rounded-md border border-gray-300 p-3 dark:border-gray-700"
+                    >
+                        <img :src="`${link.qr_svg}&inline=1`" :alt="t.link_qr" class="size-24 shrink-0 rounded-sm">
+                        <div class="min-w-0 flex-1 space-y-2">
+                            <p class="truncate text-sm font-medium">{{ link.label }}</p>
+                            <Input :model-value="link.url" class="font-mono" read-only copyable />
+                            <div class="flex flex-wrap gap-2">
+                                <!-- `target`, damit der Knopf ein echter Link ist
+                                     und kein Inertia-Besuch. -->
+                                <Button size="sm" icon="download" :href="link.qr_svg" target="_blank" :text="t.link_download_svg" />
+                                <Button size="sm" icon="download" :href="link.qr_png" target="_blank" :text="t.link_download_png" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <p v-if="!savedLinks.length" class="text-xs text-gray-500 dark:text-gray-400">{{ t.links_save_first }}</p>
                 </div>
 
                 <div class="border-t border-content-border px-6 py-4">

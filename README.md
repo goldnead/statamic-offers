@@ -241,6 +241,95 @@ The shipped wording is a **draft, to be checked by a lawyer**; it follows §§ 3
 356a BGB but no config file is legal advice. `withdrawal_pdf` is a stored flag only — **attaching
 the notice as a PDF is not implemented yet.**
 
+### Pay what you want
+
+An offer with **Pricing → Pay what you want** has a minimum (0 allowed), a suggestion and an
+optional maximum instead of a price. Without an own maximum, `pay_what_you_want.max_cent` caps it
+(default 5,000.00) so a typo with three zeros too many is not a charge.
+
+The amount is the one number that comes from the buyer, and it is only believed inside those
+bounds. It travels in the catalogue handle, `offer:workshop:=2500`, and the catalogue refuses any
+amount outside the bounds, any malformed one (`=01500`, `=10.50`, `=-1`) and any amount at all on a
+fixed-price offer. So `statamic-payments` needs no change: the checkout looks the handle up like any
+other and charges what the catalogue says.
+
+```php
+$basket = Basket::make($offer, amountCent: (int) $request->input('amount_cent'));
+// throws InvalidArgumentException outside the bounds; without an amount, the suggestion is used
+```
+
+A subscription at a chosen amount charges that amount every cycle, because the renewals read the
+same handle. Pay what you want does not combine with several payment options (the form refuses it).
+
+**Thank-you tiers** are optional: text per threshold, and the highest tier the paid amount reaches
+wins. `Offer::thankYouFor(int $cent)`, `Offers::thankYouFor('offer:workshop:=6000')`, or in a
+template `{{ offers:thanks handle="workshop" amount_cent="6000" }}`.
+
+### Setup fee
+
+On an offer with a rhythm, **Setup fee** is charged once with the first payment, as its own line
+(`offer:<handle>:+setup`) and therefore its own invoice position. The line inherits the product's
+tax facts, carries no rhythm and grants nothing. Coupons never take anything off it. With several
+payment options, the fee applies only when the chosen option has a rhythm. A *lower* first payment
+is the existing paid trial (`trial_days` + `trial_amount_cent`). `Offer::firstPaymentCent()` is the
+number to show as "due today".
+
+### Availability by country
+
+**Available in**: worldwide (default), only these countries, or everywhere except these. Enforced in
+`Basket::make(..., country: 'DE')`, which throws `OfferNotAvailable` (with `buyerMessage()`) for a
+country outside the rule, **and when no country is given while a rule exists**: a rule that only
+holds for buyers who volunteer their country is not a rule. A bump restricted elsewhere quietly
+drops out of the basket. Siblings ask `Offers::availableIn($catalogueHandle, $country)`.
+
+### Coupon links and QR codes
+
+Every coupon has links with the code prefilled: its target page (`link_url`, default the home page)
+plus the short link of every offer it applies to. The parameter is `?coupon=CODE`
+(`coupon_link.parameter`, read everywhere through `Offers::couponParameter()`). The coupon panel
+shows each link with a QR code and SVG/PNG downloads, generated on the server (the QR encoder is
+`bacon/bacon-qr-code`, which Statamic already ships; PNG is written without GD or Imagick).
+
+A link only prefills. The code is redeemed in the basket against the same table as a typed one:
+`Offers::couponFromRequest($request, $offer)` returns the live coupon or `null`, and logs why an
+expired, exhausted, unknown or foreign code was ignored instead of failing the page.
+
+### Coupon duration and scope
+
+- **Applies to** (`duration`): the first payment (default, and what every coupon did before), the
+  first *n* payments, or every payment. For subscriptions, `Basket::paymentMeta()` returns
+  `['coupon' => terms]` to attach to the payment; `Offers::recurringDiscountCent($terms, $number,
+  $amount)` is the arithmetic for payment number *n*. Lowering the renewals themselves is done by
+  `statamic-payments`; until a version that reads `meta.coupon` is installed, every coupon behaves
+  as "the first payment".
+- **Takes off** (`applies_to`): offer and bumps (default), the offer only, or the bumps only.
+- **Also for later offers in the same funnel** (`funnel_wide`): `Coupon::coversFollowUps()`; carrying
+  the code from step to step is the funnel's job.
+
+### Short link
+
+An offer may have a short link, `/go/<slug>` (`links.prefix`), that leads to **Target** while the
+offer runs and to **Target afterwards** (a waiting list, the full price) once the switch date passes
+(own date, else `available_until`) or, if enabled, once the contingent is sold out. The query string
+travels along, so a coupon link through the short link keeps its code. Visits are counted per target.
+302, never 301: a browser that cached a permanent redirect would keep sending people to the old
+target. The offer panel shows the link, the current target, the visits and the QR code.
+
+### Seats for groups
+
+An offer with **Seats per purchase** (2 or more) sells several accesses in one purchase. The buyer
+does **not** get the access herself: the catalogue entry carries the grants under `seat_grants`
+instead of `grants`, so `statamic-payments` grants nothing to her. On the paid event a seat pool is
+opened (once per payment line, `seats × quantity`), and she gets a mail with a link to a page where
+she invites people by email, sees who accepted, takes seats back and gives them again. An invited
+person accepts on their own page; only then is the access granted, through
+`statamic-entitlements` when it is installed (source `statamic-offers`, reference `seat:<id>`). A seat
+taken back revokes that access with a reason and frees the place.
+
+Both pages are authorised by a 48-character token and nothing else, because the people who open
+them have no account here. Seats are one-off purchases only; the form refuses seats with a rhythm.
+Bind your own `Contracts\SeatAccess` to grant access some other way.
+
 ### Counting
 
 Two numbers per offer: how often it was **shown**, and how often it was **accepted**.
@@ -257,6 +346,10 @@ every time a card is declined, and the number nobody can trust is worse than no 
 | `seller.name` · `seller.contact` | `null` | Fill the placeholders in the withdrawal text. Empty falls back to `app.name` and `mail.from.address`, which is wrong the moment a legal entity sells here. |
 | `withdrawal.*` | 14 days, German draft wording | The site-wide terms every offer inherits. A draft, to be checked by a lawyer. |
 | `checkout_fields` | eight fields incl. the invoice address | The library the offer form picks from. Removing a key silently drops it from every offer's picks. |
+| `pay_what_you_want.max_cent` | `500000` | The ceiling for a chosen amount when the offer names none. |
+| `coupon_link.parameter` | `coupon` | Renaming it breaks every printed link with the old name: the page opens, without the discount. |
+| `links.prefix` · `links.base_url` | `go` · `null` | The short link path, and the address printed in links and QR codes (`null` means `app.url`). The prefix must not equal a page path of the site. |
+| `seats.prefix` · `seats.after_claim_url` | `!/statamic-offers/plaetze` · `null` | Where the seat pages live, and where the button after accepting a seat leads. |
 
 The listing also shows **revenue** per offer — paid lines with the offer's handle, in the offer's
 currency — and a **slot filter**, which is what makes the Offers screen an upsell overview: filter

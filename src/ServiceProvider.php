@@ -5,13 +5,17 @@ namespace Goldnead\StatamicOffers;
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\StatamicOffers\Actions\ActivateCoupon;
 use Goldnead\StatamicOffers\Actions\DeactivateCoupon;
+use Goldnead\StatamicOffers\Contracts\SeatAccess;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
+use Goldnead\StatamicOffers\Integrations\EntitlementsSeatAccess;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\OfferSlot;
+use Goldnead\StatamicOffers\Support\OfferHandle;
+use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Support\Settings;
 use Goldnead\StatamicPayments\Cp\SuiteNav;
 use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
@@ -60,6 +64,16 @@ class ServiceProvider extends AddonServiceProvider
     ];
 
     /**
+     * Ausdruecklich, damit die Datei auch in einer Paket-Testumgebung geladen
+     * wird, wo der Ordner des Addons nicht ueber das Manifest aufzuloesen ist.
+     *
+     * @var array<string, string>
+     */
+    protected $routes = [
+        'web' => __DIR__.'/../routes/web.php',
+    ];
+
+    /**
      * The parent boots config off the addon directory, which is resolved
      * through the manifest and comes up empty in package test suites.
      */
@@ -70,6 +84,11 @@ class ServiceProvider extends AddonServiceProvider
         parent::register();
 
         $this->mergeConfigFrom(__DIR__.'/../config/statamic-offers.php', 'statamic-offers');
+
+        // Wer einem angenommenen Platz den Zugang gibt. Ein Vertrag, damit eine
+        // Site ohne statamic-entitlements ihren eigenen Weg einhaengen kann
+        // (und ein Test eine Attrappe).
+        $this->app->bindIf(SeatAccess::class, EntitlementsSeatAccess::class);
 
         // Registered here rather than in `bootAddon()`, which only runs when
         // the addon is discovered through the manifest. Without it an offer
@@ -102,6 +121,9 @@ class ServiceProvider extends AddonServiceProvider
     {
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'statamic-offers');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        // Ausdruecklich, aus demselben Grund wie `$routes`: der Namensraum der
+        // Elternklasse loest ueber das Manifest auf.
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'statamic-offers');
 
         $this->bootUtilities();
         $this->bootNavigation();
@@ -171,19 +193,36 @@ class ServiceProvider extends AddonServiceProvider
         // dieselbe Zeichenkette bleibt wie vorher — `offer:choiraccelerator`
         // loest heute und morgen dasselbe auf, und eine Zahlung von gestern
         // findet ihr Angebot unveraendert wieder.
-        $rest = substr($handle, strlen($prefix));
-        $optionKey = null;
+        //
+        // Seit 1.12 zerlegt das {@see OfferHandle}, und mit ihm zwei weitere
+        // Zusaetze: `:=2500` (frei gewaehlter Betrag) und `:+setup` (die
+        // Einrichtungsgebuehr als eigene Zeile). Ein Zusatz, den das Paket nicht
+        // kennt, ist nichts, und nicht „dann eben das Angebot".
+        $teile = OfferHandle::parse($handle);
 
-        if (($trenner = strrpos($rest, ':')) !== false) {
-            $optionKey = substr($rest, $trenner + 1);
-            $rest = substr($rest, 0, $trenner);
+        if ($teile === null) {
+            return null;
         }
 
+        $optionKey = $teile->option;
+
         $offer = Offer::query()
-            ->where('handle', $rest)
+            ->where('handle', $teile->offer)
             ->first();
 
         if (! $offer || ! $offer->isSellable()) {
+            return null;
+        }
+
+        if ($teile->setupFee) {
+            return $this->resolveSetupFee($offer);
+        }
+
+        // **Ein Betrag nur dort, wo die Person im Control Panel ihn erlaubt
+        // hat.** An einem Festpreis-Angebot waere `:=1` sonst der Weg, jedes
+        // Angebot fuer einen Cent zu kaufen. Und ein frei waehlbares Angebot
+        // ohne Betrag im Handle kostet seinen Mindestpreis, nicht mehr.
+        if ($teile->amountCent !== null && ! $offer->acceptsAmount($teile->amountCent)) {
             return null;
         }
 
@@ -322,6 +361,19 @@ class ServiceProvider extends AddonServiceProvider
             $product['products'] = $offer->productHandles();
         }
 
+        // **Plaetze fuer Gruppen: die Kaeuferin bekommt die Zugaenge nicht
+        // selbst.** `statamic-payments` vergibt, was unter `grants` steht, an
+        // die Adresse der Zahlung. Bei einem Kauf ueber zehn Plaetze waere das
+        // ein elfter Zugang, fuer die Person, die oft gar nicht teilnimmt. Also
+        // wandert die Liste unter einen Schluessel, den payments nicht liest;
+        // das Kontingent darunter vergibt sie Platz fuer Platz, siehe
+        // {@see SeatPools::openFor()}.
+        if (($plaetze = $offer->seatCount()) !== null) {
+            $product['seats'] = $plaetze;
+            $product['seat_grants'] = self::grantList($product['grants'] ?? null);
+            unset($product['grants']);
+        }
+
         // The offer's own values on the LEFT: `+` keeps the left operand for
         // duplicate keys. The other way round the product's name and full price
         // would win over the offer's, which is the whole point of an offer.
@@ -339,7 +391,15 @@ class ServiceProvider extends AddonServiceProvider
             // nicht der Gesamtpreis. Genauso, wie `amount_cent` am Angebot
             // seit 1.8.0 die Ratenhoehe ist, sobald ein `interval` daneben
             // steht: eine Regel, nicht zwei.
-            'amount_cent' => $option !== null ? $option['amount_cent'] : $offer->effectiveAmountCent(),
+            //
+            // Bei einem frei gewaehlten Betrag **dieser**, oben gegen die
+            // Grenzen geprueft. Ein Abo zu freiem Betrag bucht ihn jeden Zyklus
+            // ab, weil `Subscriptions` den Betrag ueber denselben Handle liest.
+            'amount_cent' => match (true) {
+                $option !== null => $option['amount_cent'],
+                $teile->amountCent !== null => $teile->amountCent,
+                default => $offer->effectiveAmountCent(),
+            },
             'currency' => $offer->currency(),
             // **Wem das Angebot gehoert, und nicht wem das Produkt darunter
             // gehoert.** Verkauft wird das Angebot: dieselbe Regel wie beim
@@ -366,6 +426,62 @@ class ServiceProvider extends AddonServiceProvider
             // too.
             'product' => $offer->product,
         ] + $product;
+    }
+
+    /**
+     * Die Einrichtungsgebuehr eines Angebots als eigene Katalogzeile.
+     *
+     * Die Steuerfakten (`digital`, Steuerklasse ueber `product`) kommen vom
+     * Produkt darunter, genau wie bei der Hauptzeile: eine Gebuehr fuer die
+     * Einrichtung eines Kurses ist Teil derselben Leistung. **Nicht** geerbt
+     * werden der Rhythmus (sonst kaeme die Gebuehr jeden Monat wieder) und die
+     * Zugaenge (die kommen mit der Hauptzeile; ein zweiter aus derselben
+     * Zahlung haette keine Bedeutung).
+     *
+     * @return array<string, mixed>|null
+     */
+    protected function resolveSetupFee(Offer $offer): ?array
+    {
+        $gebuehr = $offer->setupFeeCent();
+
+        if ($gebuehr === null) {
+            return null;
+        }
+
+        $product = (array) (app(Catalogue::class)->find($offer->product) ?? []);
+
+        unset(
+            $product['handle'], $product['interval'], $product['times'], $product['trial_days'],
+            $product['trial_amount_cent'], $product['grants'], $product['seats'], $product['seat_grants'],
+        );
+
+        return [
+            'name' => $offer->setupFeeName(),
+            'amount_cent' => $gebuehr,
+            'currency' => $offer->currency(),
+            'brand_id' => (int) $offer->brand_id,
+            'offer' => $offer->handle,
+            'product' => $offer->product,
+            'setup_fee' => true,
+        ] + $product;
+    }
+
+    /**
+     * Ein Slug, eine Liste davon, oder nichts, als Liste.
+     *
+     * @return list<string>
+     */
+    protected static function grantList(mixed $grants): array
+    {
+        $liste = [];
+
+        foreach (is_array($grants) ? $grants : [$grants] as $slug) {
+            if (is_string($slug) && $slug !== '') {
+                $liste[] = $slug;
+            }
+        }
+
+        return array_values(array_unique($liste));
     }
 
     /**
@@ -655,6 +771,12 @@ class ServiceProvider extends AddonServiceProvider
                 $router->post('actions/list', [CouponActionsController::class, 'bulkActions'])->name('actions.list');
                 // Same reason: "generate" must not be read as a coupon id.
                 $router->post('generate', [CouponsController::class, 'generate'])->name('generate');
+                // Der QR-Code eines Gutschein-Links, als Download. Nur fuer
+                // Links, die der Gutschein selbst fuehrt: kein freier
+                // QR-Erzeuger hinter dem Control Panel.
+                $router->get('{coupon}/qr.{format}', [CouponsController::class, 'qr'])
+                    ->where('format', 'svg|png')
+                    ->name('qr');
                 $router->post('/', [CouponsController::class, 'store'])->name('store');
                 $router->patch('{coupon}', [CouponsController::class, 'update'])->name('update');
                 $router->delete('{coupon}', [CouponsController::class, 'destroy'])->name('destroy');
@@ -672,6 +794,10 @@ class ServiceProvider extends AddonServiceProvider
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
                 $router->post('/', [OffersController::class, 'store'])->name('store');
+                // Der QR-Code des Kurzlinks, als Download.
+                $router->get('{offer}/qr.{format}', [OffersController::class, 'qr'])
+                    ->where('format', 'svg|png')
+                    ->name('qr');
                 $router->patch('{offer}', [OffersController::class, 'update'])->name('update');
                 $router->delete('{offer}', [OffersController::class, 'destroy'])->name('destroy');
             });

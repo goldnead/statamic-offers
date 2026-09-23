@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased
+
+Five migrations (additive, existing rows keep their behaviour): price modes and setup fee, country
+rule, short link, coupon duration and scope, seat pools.
+
+### Added: pay what you want (O1)
+
+`price_mode = pwyw` with minimum, suggestion and optional maximum (`pay_what_you_want.max_cent`
+caps it otherwise). The chosen amount travels in the catalogue handle, `offer:x:=2500`, and the
+catalogue refuses anything outside the bounds, any malformed amount and any amount on a fixed-price
+offer; `statamic-payments` needs no change. `Basket::make(..., amountCent:)`. Optional thank-you
+tiers: `Offer::thankYouFor()`, `Offers::thankYouFor()`, `{{ offers:thanks }}`.
+
+### Added: setup fee on subscriptions and instalments (O2)
+
+`setup_fee_cent` and `setup_fee_label`. Charged once with the first payment as its own line
+(`offer:x:+setup`), so the invoice lists it as its own position. No rhythm, no grants, never
+discounted by a coupon. `Offer::firstPaymentCent()` for "due today".
+
+### Added: availability by country (O3)
+
+Worldwide, only these countries, everywhere except these. Enforced in `Basket::make(..., country:)`,
+which throws `OfferNotAvailable`; without a country and with a rule, the basket refuses too.
+`Offers::availableIn($handle, $country)` for the payment addon.
+
+### Added: coupon links and QR codes (O4)
+
+`?coupon=CODE` (`coupon_link.parameter`, `Offers::couponParameter()`), a target page per coupon,
+one link per offer with a short link, QR codes as SVG and PNG in the coupon panel, generated on the
+server without an external service. `Offers::couponFromRequest()` for the checkout that prefills the
+field; invalid codes are ignored and logged.
+
+### Added: short link with a switch (O5)
+
+`/go/<slug>` leads to the target until the switch date (or `available_until`) or, optionally, until
+sold out, then to the second target. The query string travels along. Visits counted per target,
+QR code in the offer panel.
+
+### Added: coupon duration and scope (O6)
+
+`duration` (first payment, first n, every payment), `applies_to` (offer and bumps, offer only, bumps
+only), `funnel_wide`. `Basket::couponTerms()` / `paymentMeta()` hand the terms to the payment,
+`Offers::recurringDiscountCent()` is the arithmetic for payment n. Existing coupons stay "first
+payment, whole basket".
+
+### Added: seats for groups (O7)
+
+`seats` on an offer: one purchase, n accesses. The buyer gets a manage link by mail, invites people
+by email, takes seats back and gives them again; access is granted on acceptance through
+`statamic-entitlements` (optional) behind `Contracts\SeatAccess`.
+
+### Fixed: purchases with a suffix did not count
+
+A purchase through a payment option (`offer:x:raten3`) counted neither against the quantity limit
+nor as accepted, because the counters matched the bare handle only. `Support\OfferHandle` now parses
+every catalogue handle in one place, and the counters, the resolver and the acceptance listener use
+it. The setup fee line is revenue of its offer but not a unit.
+
 ## 1.11.3 — 2026-09-22
 
 ### Fixed: offer and coupon titles centered instead of aligning left

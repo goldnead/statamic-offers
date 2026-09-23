@@ -22,19 +22,25 @@ class OfferAcceptance
 
     protected function countFor(Payment $payment): void
     {
-        $prefix = Offer::prefix();
-
         // Every line, because an order bump is a line and it was accepted just
         // as much as the thing the buyer came for.
         $handles = $payment->items->pluck('product')->push($payment->product)->unique();
+        $angebote = [];
 
         foreach ($handles as $handle) {
-            if (! is_string($handle) || ! str_starts_with($handle, $prefix)) {
-                continue;
-            }
+            // Mit Zusatz zerlegt: `offer:x:raten3` und `offer:x:=2500` sind
+            // Annahmen von `x`. Die Gebuehr zaehlt nicht, und ein Angebot
+            // zaehlt je Zahlung einmal, auch wenn es zwei Zeilen hat.
+            $teile = is_string($handle) ? OfferHandle::parse($handle) : null;
 
+            if ($teile !== null && $teile->countsAsSale()) {
+                $angebote[$teile->offer] = true;
+            }
+        }
+
+        foreach (array_keys($angebote) as $angebot) {
             Offer::query()
-                ->where('handle', substr($handle, strlen($prefix)))
+                ->where('handle', $angebot)
                 ->first()
                 ?->recordAccepted();
         }

@@ -84,17 +84,41 @@ class OfferSales
             return null;
         }
 
-        $product = Offer::prefix().$offer->handle;
+        return self::unitsOf($offer, self::paidLines()) + self::unitsOf($offer, self::reservedLines());
+    }
 
-        $paid = (int) self::paidLines()
-            ->where('payment_items.product', $product)
-            ->sum('payment_items.quantity');
+    /**
+     * Die Stueckzahl eines Angebots in diesen Zeilen, **mit jedem Zusatz**.
+     *
+     * Frueher zaehlte nur der nackte Handle. Ein Kauf ueber `offer:x:raten3`
+     * oder `offer:x:=2500` ist derselbe Verkauf und zaehlt gegen dasselbe
+     * Kontingent; die Einrichtungsgebuehr (`offer:x:+setup`) ist kein Stueck.
+     * Gruppiert in der Datenbank, zerlegt hier: der Zusatz ist eine Regel, die
+     * {@see OfferHandle} kennt und SQL nicht.
+     *
+     * @param  Builder  $lines
+     */
+    private static function unitsOf(Offer $offer, $lines): int
+    {
+        $basis = OfferHandle::of($offer);
+        $like = addcslashes($basis.':', '%_\\').'%';
 
-        $reserved = (int) self::reservedLines()
-            ->where('payment_items.product', $product)
-            ->sum('payment_items.quantity');
+        $gruppen = $lines
+            ->where(fn ($q) => $q->where('payment_items.product', $basis)->orWhere('payment_items.product', 'like', $like))
+            ->groupBy('payment_items.product')
+            ->get(['payment_items.product', DB::raw('SUM(payment_items.quantity) as units')]);
 
-        return $paid + $reserved;
+        $summe = 0;
+
+        foreach ($gruppen as $zeile) {
+            $teile = OfferHandle::parse((string) $zeile->product);
+
+            if ($teile !== null && $teile->offer === $offer->handle && $teile->countsAsSale()) {
+                $summe += (int) $zeile->units;
+            }
+        }
+
+        return $summe;
     }
 
     /**
@@ -200,11 +224,19 @@ class OfferSales
         }
 
         foreach (self::paidLines()->where('payment_items.product', 'like', $like)->get($columns) as $row) {
-            $handle = substr((string) $row->product, strlen($prefix));
+            // Mit jedem Zusatz dem Angebot zugeordnet, siehe `unitsOf()`. Die
+            // Einrichtungsgebuehr ist Umsatz des Angebots, aber kein Stueck.
+            $teile = OfferHandle::parse((string) $row->product);
+
+            if ($teile === null) {
+                continue;
+            }
+
+            $handle = $teile->offer;
             $currency = mb_strtoupper((string) $row->currency);
 
             $karte[$handle] ??= ['sold' => 0, 'reserved' => 0, 'revenue' => []];
-            $karte[$handle]['sold'] += (int) $row->quantity;
+            $karte[$handle]['sold'] += $teile->countsAsSale() ? (int) $row->quantity : 0;
             $karte[$handle]['revenue'][$currency] = ($karte[$handle]['revenue'][$currency] ?? 0) + self::netForLine($row, $netto);
         }
 
@@ -214,7 +246,13 @@ class OfferSales
             ->get(['payment_items.product', DB::raw('SUM(payment_items.quantity) as reserved')]);
 
         foreach ($reserved as $row) {
-            $handle = substr((string) $row->product, strlen($prefix));
+            $teile = OfferHandle::parse((string) $row->product);
+
+            if ($teile === null || ! $teile->countsAsSale()) {
+                continue;
+            }
+
+            $handle = $teile->offer;
 
             $karte[$handle] ??= ['sold' => 0, 'reserved' => 0, 'revenue' => []];
             $karte[$handle]['reserved'] += (int) $row->reserved;

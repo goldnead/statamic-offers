@@ -4,7 +4,9 @@ namespace Goldnead\StatamicOffers\Support;
 
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicPayments\Support\Discount;
+use Illuminate\Support\Facades\Log;
 
 /**
  * What somebody actually agreed to buy on an offer page.
@@ -16,6 +18,12 @@ use Goldnead\StatamicPayments\Support\Discount;
  * from the coupons table, and the payment addon looks the products up again in
  * the catalogue before charging anything.
  *
+ * Seit 1.12 kommen zwei Angaben dazu, und beide werden hier geprueft statt
+ * geglaubt: der frei gewaehlte Betrag bei „Zahl, was du willst" (gegen die
+ * Grenzen des Angebots) und das Land der Kaeuferin (gegen die Laenderregel).
+ * Der Korb ist damit **der Kontrollpunkt**, den eine Kasse ruft, bevor sie
+ * `Checkout::start()` ruft.
+ *
  * The reason for the class rather than a few lines in a controller: an offer
  * page in a funnel and an offer page in somebody's own template have to agree
  * about what a ticked box means, down to which bumps are allowed to be ticked.
@@ -26,11 +34,39 @@ class Basket
      * @param  list<string>  $bumpHandles  What the browser says was ticked.
      * @param  string|null  $pricingOption  Welche Zahlweise gewaehlt wurde, wenn
      *                                      das Angebot mehrere fuehrt.
+     * @param  int|null  $amountCent  Der gewaehlte Betrag bei „Zahl, was du
+     *                                willst", in kleinster Einheit. Ohne
+     *                                Angabe der Vorschlag des Angebots.
+     * @param  string|null  $country  Das Land der Kaeuferin, zweistellig. Nur
+     *                                Pflicht, wenn das Angebot eine
+     *                                Laenderregel hat.
      *
      * @throws \InvalidArgumentException wenn das Angebot diese Zahlweise nicht fuehrt
+     *                                   oder der Betrag ausserhalb der Grenzen liegt
+     * @throws OfferNotAvailable wenn das Angebot in diesem Land nicht verkauft wird
      */
-    public static function make(Offer $offer, array $bumpHandles = [], ?string $code = null, ?string $pricingOption = null): self
-    {
+    public static function make(
+        Offer $offer,
+        array $bumpHandles = [],
+        ?string $code = null,
+        ?string $pricingOption = null,
+        ?int $amountCent = null,
+        ?string $country = null,
+    ): self {
+        if (! $offer->isAvailableIn($country)) {
+            // Laut, und mit Grund im Log. Eine Kasse, die das Angebot gar
+            // nicht erst anzeigt, fragt vorher `isAvailableIn()`; wer hier
+            // ankommt, hat entweder am Formular gedreht oder das Land nicht
+            // abgefragt, und beides soll sichtbar sein.
+            Log::info('statamic-offers: an offer was refused for the buyer\'s country.', [
+                'offer' => $offer->handle,
+                'country' => $country,
+                'mode' => $offer->countryMode(),
+            ]);
+
+            throw OfferNotAvailable::inCountry($offer, $country);
+        }
+
         $option = null;
 
         if ($pricingOption !== null && $pricingOption !== '') {
@@ -49,7 +85,34 @@ class Basket
             }
         }
 
-        return new self($offer, self::allowedBumps($offer, $bumpHandles), Coupon::findByCode($code), $option);
+        $gewaehlt = null;
+
+        if ($offer->isPayWhatYouWant()) {
+            $gewaehlt = $amountCent ?? $offer->pwywSuggestedCent();
+
+            // Dieselbe Pruefung wie im Katalog, hier nur frueher und mit
+            // Grund. Der Katalog wuerde den Handle ohnehin nicht aufloesen;
+            // `Checkout::start()` gaebe dann ein stummes `null` zurueck, und die
+            // Kasse muesste raten, warum.
+            if (! $offer->acceptsAmount($gewaehlt)) {
+                throw new \InvalidArgumentException(
+                    'statamic-offers: '.$gewaehlt.' liegt ausserhalb der Grenzen von '.$offer->handle
+                    .' ('.$offer->pwywMinCent().' bis '.$offer->pwywMaxCent().').'
+                );
+            }
+        } elseif ($amountCent !== null) {
+            // Ein Betrag an einem Festpreis-Angebot ist ein Formular, das nicht
+            // zu dieser Seite gehoert.
+            throw new \InvalidArgumentException('statamic-offers: '.$offer->handle.' hat einen festen Preis.');
+        }
+
+        return new self(
+            $offer,
+            self::allowedBumps($offer, $bumpHandles, $country),
+            Coupon::findByCode($code),
+            $option,
+            $gewaehlt,
+        );
     }
 
     /**
@@ -61,6 +124,7 @@ class Basket
         public readonly array $bumps,
         protected readonly ?Coupon $coupon,
         public readonly ?array $option = null,
+        public readonly ?int $chosenAmountCent = null,
     ) {}
 
     /**
@@ -71,10 +135,14 @@ class Basket
      * an expensive one to somebody else's basket. The list on the offer is the
      * authority, not the form.
      *
+     * Ein Bump mit eigener Laenderregel, die dieses Land ausschliesst, faellt
+     * still heraus, wie ein abgeschalteter: er soll nicht angeboten werden,
+     * aber den Kauf des Hauptangebots nicht verhindern.
+     *
      * @param  list<string>  $wanted
      * @return list<Offer>
      */
-    protected static function allowedBumps(Offer $offer, array $wanted): array
+    protected static function allowedBumps(Offer $offer, array $wanted, ?string $country = null): array
     {
         $allowed = array_values(array_filter((array) ($offer->bumps ?? []), 'is_string'));
 
@@ -91,7 +159,14 @@ class Basket
         return Offer::query()
             ->whereIn('handle', $picked)
             ->get()
-            ->filter(fn (Offer $bump) => $bump->isSellable() && $bump->handle !== $offer->handle)
+            ->filter(fn (Offer $bump) => $bump->isSellable()
+                && $bump->handle !== $offer->handle
+                && $bump->isAvailableIn($country)
+                // Ein Bump ist ein Haekchen zu festem Preis. Einer mit frei
+                // waehlbarem Betrag oder mit Plaetzen braucht eine eigene
+                // Eingabe, die ein Haekchen nicht hat.
+                && ! $bump->isPayWhatYouWant()
+                && $bump->seatCount() === null)
             // Shown in the order the offer lists them, not the order the form
             // posted them: the editorial order is the one somebody chose.
             ->sortBy(fn (Offer $bump) => array_search($bump->handle, $allowed, true))
@@ -100,43 +175,95 @@ class Basket
     }
 
     /**
-     * The handles to hand the checkout. The offer first, bumps behind it.
+     * The handles to hand the checkout. The offer first, then its setup fee,
+     * bumps behind them.
      *
      * @return list<string>
      */
     public function handles(): array
     {
-        $prefix = Offer::prefix();
-
-        $handles = array_map(
-            fn (Offer $o) => $prefix.$o->handle,
-            [$this->offer, ...$this->bumps],
-        );
-
         // Die gewaehlte Zahlweise haengt am **ersten** Handle, weil der die
         // Zahlung traegt: `Subscriptions::start()` liest den Rhythmus dort,
         // und ein Bump daneben ist einmal gekauft und nicht jede Rate wieder.
-        if ($this->option !== null) {
-            $handles[0] .= ':'.$this->option['key'];
+        // Ebenso der frei gewaehlte Betrag.
+        $erster = match (true) {
+            $this->option !== null => OfferHandle::of($this->offer).':'.$this->option['key'],
+            $this->chosenAmountCent !== null => OfferHandle::withAmount($this->offer, $this->chosenAmountCent),
+            default => OfferHandle::of($this->offer),
+        };
+
+        $handles = [$erster];
+
+        // Die Gebuehr direkt dahinter und **nie vorn**: der Abo-Anfang liest
+        // den ersten Handle als Plan, und die Gebuehr hat keinen.
+        if ($this->setupFeeCent() !== null) {
+            $handles[] = OfferHandle::setupFee($this->offer);
+        }
+
+        foreach ($this->bumps as $bump) {
+            $handles[] = OfferHandle::of($bump);
         }
 
         return $handles;
     }
 
-    public function grossCent(): int
+    /** Die Gebuehr, wenn sie in diesem Kauf anfaellt: nur bei einer Zahlweise mit Rhythmus. */
+    public function setupFeeCent(): ?int
     {
-        // Bei einer Zahlweise ihr Betrag, sonst der des Angebots. Das ist die
-        // Zahl, auf die ein Gutschein rechnet, und sie muss dieselbe sein, die
-        // der Katalog abbucht — sonst zieht ein Prozentgutschein einen
-        // Prozentsatz von einem Preis ab, der gar nicht gezahlt wird.
-        $erste = $this->option !== null
-            ? $this->option['amount_cent']
-            : (int) $this->offer->effectiveAmountCent();
+        $fee = $this->offer->setupFeeCent();
 
-        return $erste + array_sum(array_map(
+        if ($fee === null || ! $this->isRecurring()) {
+            return null;
+        }
+
+        return $fee;
+    }
+
+    /** Beginnt dieser Kauf eine Vereinbarung? */
+    public function isRecurring(): bool
+    {
+        return $this->offer->isRecurring($this->option['key'] ?? null);
+    }
+
+    /** Was die Hauptzeile heute kostet: Option, gewaehlter Betrag oder Angebotspreis. */
+    public function mainCent(): int
+    {
+        return match (true) {
+            $this->option !== null => $this->option['amount_cent'],
+            $this->chosenAmountCent !== null => $this->chosenAmountCent,
+            default => (int) $this->offer->effectiveAmountCent(),
+        };
+    }
+
+    public function bumpsCent(): int
+    {
+        return array_sum(array_map(
             fn (Offer $o) => (int) $o->effectiveAmountCent(),
             $this->bumps,
         ));
+    }
+
+    public function grossCent(): int
+    {
+        // Bei einer Zahlweise ihr Betrag, sonst der des Angebots. Das ist die
+        // Zahl, die der Katalog abbucht, Zeile fuer Zeile.
+        return $this->mainCent() + ($this->setupFeeCent() ?? 0) + $this->bumpsCent();
+    }
+
+    /**
+     * Die Zahl, auf die ein Gutschein rechnet.
+     *
+     * Je nach Geltung das Hauptangebot, die Bumps oder beides, und **nie die
+     * Einrichtungsgebuehr**: ein Gutschein ist ein Nachlass auf das Angebot,
+     * und ein Prozentsatz auf die Gebuehr waere einer, den niemand beworben hat.
+     */
+    public function couponBaseCent(Coupon $coupon): int
+    {
+        return match ($coupon->scope()) {
+            Coupon::APPLIES_MAIN => $this->mainCent(),
+            Coupon::APPLIES_BUMPS => $this->bumpsCent(),
+            default => $this->mainCent() + $this->bumpsCent(),
+        };
     }
 
     public function currency(): string
@@ -168,8 +295,7 @@ class Basket
             return null;
         }
 
-        $gross = $this->grossCent();
-        $off = $gross - $coupon->apply($gross, $this->currency());
+        $off = $this->offCent($coupon);
 
         if ($off <= 0) {
             return null;
@@ -189,8 +315,54 @@ class Basket
     public function netCent(): int
     {
         $coupon = $this->coupon();
-        $gross = $this->grossCent();
 
-        return $coupon ? $coupon->apply($gross, $this->currency()) : $gross;
+        return $this->grossCent() - ($coupon ? $this->offCent($coupon) : 0);
+    }
+
+    protected function offCent(Coupon $coupon): int
+    {
+        $base = $this->couponBaseCent($coupon);
+
+        return max(0, $base - $coupon->apply($base, $this->currency()));
+    }
+
+    /**
+     * Was die Folgezahlungen ueber den Gutschein wissen muessen, oder null.
+     *
+     * Nur wenn der Kauf eine Vereinbarung beginnt, der Gutschein auf das
+     * Hauptangebot wirkt (die Folgezahlungen belasten nur dessen Betrag) und er
+     * laenger als die erste Zahlung gilt. Die Form ist die, die
+     * {@see Offers::recurringDiscountCent()} liest.
+     *
+     * @return array{code: string, percent: int|null, amount_cent: int|null, currency: string|null, duration: string, cycles: int|null}|null
+     */
+    public function couponTerms(): ?array
+    {
+        $coupon = $this->coupon();
+
+        if (! $coupon || ! $this->isRecurring() || $coupon->scope() === Coupon::APPLIES_BUMPS) {
+            return null;
+        }
+
+        if ($coupon->duration() === Coupon::DURATION_ONCE) {
+            return null;
+        }
+
+        return $coupon->terms();
+    }
+
+    /**
+     * Was die Kasse an die Zahlung heften soll (`PaymentDetails` → `meta`).
+     *
+     * Leer, wenn es nichts weiterzugeben gibt. `coupon` ist der Schluessel,
+     * unter dem payments die Bedingungen fuer die Folgezahlungen findet.
+     *
+     * @return array<string, mixed>
+     */
+    public function paymentMeta(): array
+    {
+        $terms = $this->couponTerms();
+
+        return $terms === null ? [] : ['coupon' => $terms];
     }
 }

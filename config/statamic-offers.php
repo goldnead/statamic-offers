@@ -34,6 +34,74 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Zahl, was du willst
+    |--------------------------------------------------------------------------
+    |
+    | Die Obergrenze fuer einen frei gewaehlten Betrag, wenn das Angebot keine
+    | eigene nennt, in kleinster Einheit. Sie ist keine Preisempfehlung,
+    | sondern die Plausibilitaetspruefung gegen einen vertippten Betrag mit
+    | drei Nullen zu viel.
+    |
+    */
+
+    'pay_what_you_want' => [
+        'max_cent' => 500000,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Gutschein-Links
+    |--------------------------------------------------------------------------
+    |
+    | Der URL-Parameter, der einen Code vorbelegt: `?coupon=CHOR20`. Die
+    | Kasse (statamic-funnels) liest ihn ueber `Offers::couponParameter()`;
+    | wer ihn hier umbenennt, benennt ihn fuer beide Seiten um. Gedruckte
+    | Flyer mit dem alten Namen fuehren danach ohne Rabatt auf die Seite.
+    |
+    */
+
+    'coupon_link' => [
+        'parameter' => 'coupon',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Kurzlinks (Link-Weiche)
+    |--------------------------------------------------------------------------
+    |
+    | `prefix` ist der Pfad vor dem Slug: `go` ergibt `/go/herbst`. Er darf
+    | keinem Seitenpfad der Site gleichen.
+    |
+    | `base_url` ist die Adresse, die in Links und QR-Codes steht. Leer heisst
+    | `app.url`. Gesetzt wird sie, wenn das Control Panel unter einer anderen
+    | Adresse laeuft als die Site, die auf dem Flyer stehen soll.
+    |
+    */
+
+    'links' => [
+        'prefix' => 'go',
+        'base_url' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Plaetze fuer Gruppen
+    |--------------------------------------------------------------------------
+    |
+    | `prefix` ist der Pfad der Seiten, auf denen die Kaeuferin Plaetze
+    | verteilt und Eingeladene sie annehmen. `after_claim_url` ist, wohin der
+    | Knopf nach dem Annehmen fuehrt (z. B. die Anmeldung zum Kurs); leer
+    | heisst kein Knopf.
+    |
+    */
+
+    'seats' => [
+        'prefix' => '!/statamic-offers/plaetze',
+        'after_claim_url' => null,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Seller
     |--------------------------------------------------------------------------
     |

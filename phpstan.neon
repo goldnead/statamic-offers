@@ -10,3 +10,18 @@ parameters:
     # Corrects a wrong annotation in Statamic itself, see the stub for why.
     stubFiles:
         - phpstan/AddonServiceProvider.stub
+
+    # Die Ausnahme unten greift erst ab Larastan 3.12. Eine Arbeitskopie mit
+    # aelterem Lockfile meldete sonst die *ungenutzte* Ausnahme. Dieselbe
+    # Einstellung wie in statamic-payments und statamic-marketing.
+    reportUnmatchedIgnoredErrors: false
+
+    ignoreErrors:
+        # Larastan (ab 3.12) prueft einen `view-string`, indem es den View-Finder
+        # fragt, ob die Vorlage existiert. Der Namensraum `statamic-offers::`
+        # wird in `bootAddon()` per loadViewsFrom() angemeldet, was die Analyse
+        # nie ausfuehrt. Ein Befund ueber die Analyseumgebung, nicht ueber die
+        # Vorlage; dieselbe Ausnahme wie in payments, marketing, automations.
+        -
+            identifier: argument.type
+            message: '#expects view-string(\|null)?, string given#'

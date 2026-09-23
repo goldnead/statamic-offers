@@ -35,6 +35,8 @@ const props = defineProps({
     checkoutFields: { type: Array, default: () => [] },
     withdrawalDefaults: { type: Object, default: () => ({}) },
     timezone: { type: String, default: 'UTC' },
+    countries: { type: Array, default: () => [] },
+    linkBase: { type: String, default: '' },
     t: { type: Object, required: true },
 });
 
@@ -59,6 +61,69 @@ const blank = () => ({
     // form shows as a placeholder so that "empty" is visibly "this".
     withdrawal_days: null, withdrawal_text: '', withdrawal_waiver_text: '',
     withdrawal_checkbox_required: true, withdrawal_b2b_text: '', withdrawal_pdf: false,
+    // Zahl, was du willst. `fixed` ist alles, was es vorher gab.
+    price_mode: 'fixed', pwyw_min_cent: null, pwyw_suggested_cent: null, pwyw_max_cent: null, pwyw_thanks: [],
+    // Einrichtungsgebuehr, nur mit Rhythmus wirksam.
+    setup_fee_cent: null, setup_fee_label: '',
+    // Weltweit, bis jemand eine Regel setzt.
+    country_mode: 'all', countries: [],
+    // Kurzlink: ohne Adresse keiner.
+    link_slug: '', link_target: '', link_fallback: '', link_switch_at: null, link_switch_on_sold_out: true,
+    // Plaetze fuer Gruppen: leer ist ein gewoehnlicher Kauf.
+    seats: null,
+});
+
+const priceModes = computed(() => [
+    { value: 'fixed', label: props.t.price_mode_fixed },
+    { value: 'pwyw', label: props.t.price_mode_pwyw },
+]);
+
+const countryModes = computed(() => [
+    { value: 'all', label: props.t.country_mode_all },
+    { value: 'only', label: props.t.country_mode_only },
+    { value: 'except', label: props.t.country_mode_except },
+]);
+
+const isPwyw = computed(() => form.value.price_mode === 'pwyw');
+
+/**
+ * Traegt das Angebot irgendwo einen Rhythmus? Nur dann kann eine
+ * Einrichtungsgebuehr anfallen. Der Server prueft dasselbe; hier ist es, damit
+ * das Feld nicht aussieht, als wirke es.
+ */
+const hasPlan = computed(() => Boolean(form.value.interval)
+    || (form.value.pricing_options ?? []).some((o) => Boolean(o.interval)));
+
+function addThanks() {
+    form.value.pwyw_thanks = [...(form.value.pwyw_thanks ?? []), { from_cent: null, text: '' }];
+}
+
+function removeThanks(index) {
+    form.value.pwyw_thanks = form.value.pwyw_thanks.filter((_, i) => i !== index);
+}
+
+function thanksError(index, field) {
+    return errors.value[`pwyw_thanks.${index}.${field}`] ?? null;
+}
+
+const countriesError = computed(() => {
+    const key = Object.keys(errors.value).find((k) => k === 'countries' || k.startsWith('countries.'));
+
+    return key ? errors.value[key] : null;
+});
+
+/**
+ * Der Kurzlink, wie er gedruckt wird. Waehrend jemand tippt, aus der Basis und
+ * dem Slug; nach dem Speichern der vom Server gebaute (`editing.short_link`).
+ */
+const linkPreview = computed(() => (form.value.link_slug ? props.linkBase + form.value.link_slug : ''));
+
+const savedLink = computed(() => {
+    const link = editing.value?.short_link ?? null;
+
+    // Nur solange das Formular denselben Slug zeigt: ein umgetippter Slug
+    // hat noch keinen QR-Code, und der alte waere eine falsche Vorschau.
+    return link && editing.value?.edit_values?.link_slug === form.value.link_slug ? link : null;
 });
 
 const timezoneNote = computed(() => props.t.timezone_note.replace(':timezone', props.timezone));
@@ -474,7 +539,89 @@ const statusColor = (row) => {
 
                 <Subheading :text="t.section_price" />
 
-                <div>
+                <Field :label="t.field_price_mode" :instructions="t.field_price_mode_help" :error="errors.price_mode">
+                    <Select v-model="form.price_mode" :options="priceModes" />
+                </Field>
+
+                <!-- Zahl, was du willst. Die Grenzen sind das Einzige, was das
+                     Angebot festlegt; den Betrag waehlt die Kaeuferin. -->
+                <div v-if="isPwyw">
+                    <!-- Zwei Spalten, nicht drei: im schmalen Stapel schneidet
+                         eine dritte Spalte die Betraege ab. -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_pwyw_min" :error="errors.pwyw_min_cent">
+                            <Input
+                                :model-value="form.pwyw_min_cent"
+                                type="number"
+                                min="0"
+                                :append="currency"
+                                @update:model-value="form.pwyw_min_cent = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+
+                        <Field :label="t.field_pwyw_suggested" :error="errors.pwyw_suggested_cent">
+                            <Input
+                                :model-value="form.pwyw_suggested_cent"
+                                type="number"
+                                min="0"
+                                :append="currency"
+                                @update:model-value="form.pwyw_suggested_cent = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+
+                        <Field :label="t.field_pwyw_max" :error="errors.pwyw_max_cent">
+                            <Input
+                                :model-value="form.pwyw_max_cent"
+                                type="number"
+                                min="1"
+                                :append="currency"
+                                @update:model-value="form.pwyw_max_cent = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_help }}</p>
+                </div>
+
+                <div v-if="isPwyw">
+                    <Subheading :text="t.field_pwyw_thanks" />
+
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_thanks_help }}</p>
+
+                    <div
+                        v-for="(tier, index) in form.pwyw_thanks"
+                        :key="index"
+                        class="mt-3 rounded-md border border-gray-300 p-3 dark:border-gray-700"
+                    >
+                        <div class="flex items-end gap-4">
+                            <Field class="w-40 shrink-0" :label="t.field_pwyw_thanks_from" :error="thanksError(index, 'from_cent')">
+                                <Input
+                                    :model-value="tier.from_cent"
+                                    type="number"
+                                    min="0"
+                                    :append="currency"
+                                    @update:model-value="tier.from_cent = $event === '' ? null : Number($event)"
+                                />
+                            </Field>
+
+                            <Button
+                                class="ms-auto"
+                                variant="ghost"
+                                size="sm"
+                                :text="t.pwyw_thanks_remove"
+                                @click="removeThanks(index)"
+                            />
+                        </div>
+
+                        <Field class="mt-3" :label="t.field_pwyw_thanks_text" :error="thanksError(index, 'text')">
+                            <Textarea v-model="tier.text" :rows="2" />
+                        </Field>
+                    </div>
+
+                    <Button class="mt-3" size="sm" :text="t.pwyw_thanks_add" @click="addThanks" />
+                </div>
+
+                <div v-if="!isPwyw">
                     <div class="grid grid-cols-2 gap-4">
                         <Field :label="t.field_amount" :error="errors.amount_cent">
                             <Input
@@ -558,6 +705,33 @@ const statusColor = (row) => {
                     </p>
                 </div>
 
+                <!-- Die Einrichtungsgebuehr steht beim Rhythmus, weil sie nur
+                     mit ihm anfaellt: einmal, mit der ersten Zahlung. -->
+                <div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <Field :label="t.field_setup_fee" :error="errors.setup_fee_cent">
+                            <Input
+                                :model-value="form.setup_fee_cent"
+                                type="number"
+                                min="1"
+                                :append="currency"
+                                :disabled="!hasPlan && !form.setup_fee_cent"
+                                @update:model-value="form.setup_fee_cent = $event === '' ? null : Number($event)"
+                            />
+                        </Field>
+
+                        <Field :label="t.field_setup_fee_label" :error="errors.setup_fee_label">
+                            <Input
+                                v-model="form.setup_fee_label"
+                                :placeholder="t.field_setup_fee_label_placeholder"
+                                :disabled="!form.setup_fee_cent"
+                            />
+                        </Field>
+                    </div>
+
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_setup_fee_help }}</p>
+                </div>
+
                 <!-- Mehrere Zahlweisen an einem Angebot. Steht unter dem
                      Rhythmus, weil jede Zeile derselbe Feldsatz noch einmal
                      ist: Betrag, Rhythmus, Anzahl.
@@ -566,7 +740,7 @@ const statusColor = (row) => {
                      aus Rhythmus und Anzahl, und ein Auswahlfeld daneben
                      waere die zweite Wahrheit, die irgendwann von der ersten
                      abweicht. -->
-                <div>
+                <div v-if="!isPwyw">
                     <Subheading :text="t.field_pricing_options" />
 
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -663,7 +837,7 @@ const statusColor = (row) => {
 
                 <!-- The other way to a price: a share off the catalogue. One
                      or the other, and the server refuses both. -->
-                <Field :label="t.field_discount_percent" :instructions="t.field_discount_percent_help" :error="errors.discount_percent">
+                <Field v-if="!isPwyw" :label="t.field_discount_percent" :instructions="t.field_discount_percent_help" :error="errors.discount_percent">
                     <Input
                         :model-value="form.discount_percent"
                         type="number"
@@ -739,6 +913,88 @@ const statusColor = (row) => {
                     </p>
                 </div>
 
+                <!-- Wo verkauft wird. Durchgesetzt in der Kasse, gegen das
+                     Land der Kaeuferin; hier steht nur die Regel. -->
+                <Field :label="t.field_country_mode" :error="errors.country_mode">
+                    <Select v-model="form.country_mode" :options="countryModes" />
+                </Field>
+
+                <Field
+                    v-if="form.country_mode !== 'all'"
+                    :label="t.field_countries"
+                    :instructions="t.field_countries_help"
+                    :error="countriesError"
+                >
+                    <Combobox
+                        v-model="form.countries"
+                        :options="countries"
+                        :placeholder="t.field_countries_placeholder"
+                        multiple
+                        searchable
+                        clearable
+                    />
+                </Field>
+
+                <!-- Der Kurzlink. Steht bei der Verfuegbarkeit, weil er an ihr
+                     umschaltet: Stichtag und Kontingent sind dieselben. -->
+                <Subheading :text="t.section_link" />
+
+                <Field :label="t.field_link_slug" :instructions="t.field_link_slug_help" :error="errors.link_slug">
+                    <Input v-model="form.link_slug" class="font-mono" placeholder="workshop-herbst" />
+                </Field>
+
+                <!-- Die ganze Adresse unter dem Feld und nicht als Praefix im
+                     Feld: im schmalen Stapel liess das Praefix vom Slug kaum
+                     etwas uebrig. -->
+                <p v-if="form.link_slug && !savedLink" class="-mt-3 font-mono text-xs text-gray-500 dark:text-gray-400">{{ linkPreview }}</p>
+
+                <template v-if="form.link_slug">
+                    <Field :label="t.field_link_target" :instructions="t.field_link_target_help" :error="errors.link_target" required>
+                        <Input v-model="form.link_target" class="font-mono" placeholder="/workshop" />
+                    </Field>
+
+                    <Field :label="t.field_link_fallback" :instructions="t.field_link_fallback_help" :error="errors.link_fallback">
+                        <Input v-model="form.link_fallback" class="font-mono" placeholder="/warteliste" />
+                    </Field>
+
+                    <Field :label="t.field_link_switch_at" :instructions="`${t.field_link_switch_at_help} ${timezoneNote}`" :error="errors.link_switch_at">
+                        <Input v-model="form.link_switch_at" type="datetime-local" :disabled="!form.link_fallback" />
+                    </Field>
+
+                    <Field :label="t.field_link_switch_on_sold_out" :error="errors.link_switch_on_sold_out">
+                        <Switch v-model="form.link_switch_on_sold_out" :disabled="!form.link_fallback" />
+                    </Field>
+
+                    <!-- Link, QR-Code und Aufrufe gibt es erst gespeichert: der
+                         QR-Code kodiert, was der Server gleich ausliefert, und
+                         nicht, was gerade im Feld steht. -->
+                    <div v-if="savedLink" class="flex gap-4 rounded-md border border-gray-300 p-3 dark:border-gray-700">
+                        <img
+                            :src="`${savedLink.qr_svg}?inline=1`"
+                            :alt="t.link_qr"
+                            class="size-28 shrink-0 rounded-sm"
+                        >
+                        <div class="min-w-0 flex-1 space-y-2 text-sm">
+                            <Input :model-value="savedLink.url" class="font-mono" read-only copyable />
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ savedLink.destination === 'fallback' ? t.link_now_fallback : t.link_now_target }}
+                                {{ t.link_hits }}:
+                                <span class="tabular-nums">{{ t.link_hits_target.replace(':count', savedLink.hits_target) }}</span>
+                                ·
+                                <span class="tabular-nums">{{ t.link_hits_fallback.replace(':count', savedLink.hits_fallback) }}</span>
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <!-- `target`, damit der Knopf ein echter Link ist:
+                                     ohne ihn wird er ein Inertia-Link, und der
+                                     holt die Datei per XHR statt sie zu speichern. -->
+                                <Button size="sm" icon="download" :href="savedLink.qr_svg" target="_blank" :text="t.link_download_svg" />
+                                <Button size="sm" icon="download" :href="savedLink.qr_png" target="_blank" :text="t.link_download_png" />
+                            </div>
+                        </div>
+                    </div>
+                    <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t.link_save_first }}</p>
+                </template>
+
                 <!-- Access. Handed to the payment; the entitlements addon
                      turns it into starts_at / expires_at. -->
                 <Subheading :text="t.section_access" />
@@ -756,6 +1012,21 @@ const statusColor = (row) => {
 
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_access_help }}</p>
                 </div>
+
+                <!-- Plaetze fuer Gruppen. Beim Zugang, weil es um Zugaenge
+                     geht: wer sie bekommt, entscheidet dann die Kaeuferin. -->
+                <Subheading :text="t.section_seats" />
+
+                <Field :label="t.field_seats" :instructions="t.field_seats_help" :error="errors.seats">
+                    <Input
+                        :model-value="form.seats"
+                        type="number"
+                        min="2"
+                        max="1000"
+                        class="w-40"
+                        @update:model-value="form.seats = $event === '' ? null : Number($event)"
+                    />
+                </Field>
 
                 <!-- Checkout fields: picks from the library in the config.
                      The library says what a field is; the offer only says

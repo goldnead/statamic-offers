@@ -32,7 +32,17 @@ class ListedOffer extends JsonResource
             // Formatted here rather than by the model, so this listing and the
             // coupons listing next door write a price the same way. The model's
             // `amount()` is a machine-readable decimal and stays that way.
-            'amount' => $this->money($this->effectiveAmountCent()),
+            //
+            // Bei „Zahl, was du willst" ist das die Untergrenze, und die Zelle
+            // sagt es: „ab 10,00". Nackt stuende da ein Preis, den niemand
+            // zahlen muss.
+            'amount' => $this->resource->isPayWhatYouWant()
+                ? __('statamic-offers::messages.price_from', ['amount' => $this->money($this->effectiveAmountCent())])
+                : $this->money($this->effectiveAmountCent()),
+            'pay_what_you_want' => $this->resource->isPayWhatYouWant(),
+            // Der Kurzlink, fertig gebaut, mit den Zaehlern und dem Ziel, zu
+            // dem er gerade fuehrt. Null ohne Link.
+            'short_link' => $this->shortLink(),
             'currency' => $this->currency(),
             'compare_at' => $this->money($this->effectiveCompareAtCent()),
             'own_price' => $this->amount_cent !== null,
@@ -126,7 +136,45 @@ class ListedOffer extends JsonResource
                 // offer into silence on the next click.
                 'confirmation_mode' => $this->confirmation_mode ?: Offer::CONFIRMATION_DEFAULT,
                 'confirmation_template' => $this->confirmation_template,
+                'price_mode' => $this->resource->isPayWhatYouWant() ? Offer::PRICE_PWYW : Offer::PRICE_FIXED,
+                'pwyw_min_cent' => $this->pwyw_min_cent,
+                'pwyw_suggested_cent' => $this->pwyw_suggested_cent,
+                'pwyw_max_cent' => $this->pwyw_max_cent,
+                // Gesaeubert, wie die Zahlweisen: das Formular bekommt, was
+                // wirkt, nicht was irgendwann in der Spalte stand.
+                'pwyw_thanks' => $this->resource->thankYouTiers(),
+                'setup_fee_cent' => $this->setup_fee_cent,
+                'setup_fee_label' => $this->setup_fee_label,
+                'country_mode' => $this->resource->countryMode(),
+                'countries' => $this->resource->countryList(),
+                'link_slug' => $this->link_slug,
+                'link_target' => $this->link_target,
+                'link_fallback' => $this->link_fallback,
+                'link_switch_at' => $this->link_switch_at?->format('Y-m-d\TH:i'),
+                'link_switch_on_sold_out' => (bool) ($this->link_switch_on_sold_out ?? true),
+                'seats' => $this->seats,
             ],
+        ];
+    }
+
+    /**
+     * @return array{url: string, destination: string, hits_target: int, hits_fallback: int, qr_svg: string, qr_png: string}|null
+     */
+    protected function shortLink(): ?array
+    {
+        $url = $this->resource->shortLinkUrl();
+
+        if ($url === null) {
+            return null;
+        }
+
+        return [
+            'url' => $url,
+            'destination' => $this->resource->linkDestination(),
+            'hits_target' => (int) $this->link_hits_target,
+            'hits_fallback' => (int) $this->link_hits_fallback,
+            'qr_svg' => cp_route('utilities.offers.qr', ['offer' => $this->id, 'format' => 'svg']),
+            'qr_png' => cp_route('utilities.offers.qr', ['offer' => $this->id, 'format' => 'png']),
         ];
     }
 

@@ -5,6 +5,7 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Offers;
+use Goldnead\StatamicOffers\Support\QrDownload;
 use Goldnead\StatamicOffers\Support\Setup;
 use Goldnead\StatamicPayments\Support\Brands;
 use Goldnead\StatamicPayments\Support\Catalogue;
@@ -17,6 +18,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Inertia\Inertia;
 use Statamic\Facades\Collection;
+use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
 use Statamic\Facades\Scope;
 use Statamic\Http\Controllers\CP\CpController;
@@ -100,6 +102,12 @@ class OffersController extends CpController
             // Named on the screen next to every date-time field: a deadline
             // typed without knowing which clock it runs on is off by hours.
             'timezone' => (string) config('app.timezone', 'UTC'),
+            // Die Laender aus Statamics eigenem Verzeichnis, zweistellig, weil
+            // die Kasse und die Rechnung zweistellig rechnen.
+            'countries' => $this->countryOptions(),
+            // Was vor dem Slug eines Kurzlinks steht, damit das Formular die
+            // ganze Adresse zeigt, waehrend jemand den Slug tippt.
+            'linkBase' => Offers::publicUrl(Offers::linkPrefix()).'/',
             // Every label on the screen, translated here rather than in the
             // template. See the coupons screen for the reasoning; the two are
             // built the same way on purpose.
@@ -305,7 +313,45 @@ class OffersController extends CpController
                 Rule::notIn([(string) $request->input('handle')]),
             ],
             'active' => ['boolean'],
+
+            // O1 · Zahl, was du willst. Die Grenzen sind ganze kleinste
+            // Einheiten, aus demselben Grund wie `amount_cent` oben.
+            'price_mode' => ['nullable', Rule::in([Offer::PRICE_FIXED, Offer::PRICE_PWYW])],
+            'pwyw_min_cent' => ['nullable', 'integer', 'min:0'],
+            'pwyw_suggested_cent' => ['nullable', 'integer', 'min:0'],
+            'pwyw_max_cent' => ['nullable', 'integer', 'min:1'],
+            'pwyw_thanks' => ['nullable', 'array', 'max:12'],
+            'pwyw_thanks.*.from_cent' => ['required', 'integer', 'min:0'],
+            'pwyw_thanks.*.text' => ['required', 'string', 'max:2000'],
+
+            // O2 · Einrichtungsgebuehr.
+            'setup_fee_cent' => ['nullable', 'integer', 'min:1'],
+            'setup_fee_label' => ['nullable', 'string', 'max:191'],
+
+            // O3 · Laender. Zweistellige Codes; die Liste im Formular kommt
+            // aus Statamics Laenderverzeichnis, aber geprueft wird die Form,
+            // nicht die Herkunft.
+            'country_mode' => ['nullable', Rule::in([Offer::COUNTRIES_ALL, Offer::COUNTRIES_ONLY, Offer::COUNTRIES_EXCEPT])],
+            'countries' => ['nullable', 'array', 'max:250'],
+            'countries.*' => ['string', 'regex:/^[A-Za-z]{2}$/'],
+
+            // O5 · Kurzlink. Der Slug so eng wie die Route, die ihn annimmt.
+            'link_slug' => [
+                'nullable', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9-]*$/',
+                Rule::unique('offers', 'link_slug')->ignore($offer?->getKey()),
+            ],
+            'link_target' => ['nullable', 'required_with:link_slug', 'string', 'max:2000', 'regex:#^(/|https?://)#i'],
+            'link_fallback' => ['nullable', 'string', 'max:2000', 'regex:#^(/|https?://)#i'],
+            'link_switch_at' => ['nullable', 'date'],
+            'link_switch_on_sold_out' => ['nullable', 'boolean'],
+
+            // O7 · Plaetze fuer Gruppen. Ab zwei; einer ist ein gewoehnlicher Kauf.
+            'seats' => ['nullable', 'integer', 'min:2', 'max:1000'],
         ], [
+            'link_target.regex' => __('statamic-offers::messages.field_link_url_invalid'),
+            'link_fallback.regex' => __('statamic-offers::messages.field_link_url_invalid'),
+            'link_slug.regex' => __('statamic-offers::messages.field_link_slug_invalid'),
+            'countries.*.regex' => __('statamic-offers::messages.field_countries_invalid'),
             'products.*.in' => __('statamic-offers::messages.field_products_invalid'),
             'products.*.not_in' => __('statamic-offers::messages.field_products_invalid'),
             'bumps.*.exists' => __('statamic-offers::messages.field_bumps_invalid'),
@@ -315,6 +361,7 @@ class OffersController extends CpController
 
         $validator->after(function (ValidatorInstance $validator) use ($request) {
             $this->checkPriceOrPercent($validator, $request);
+            $this->checkNewPriceRules($validator, $request);
         });
 
         $data = $validator->validate();
@@ -464,7 +511,135 @@ class OffersController extends CpController
         // aus demselben Grund wie bei `products` darueber.
         $data['pricing_options'] = $optionen === [] ? null : $optionen;
 
+        return $this->normaliseNewFields($data, $request);
+    }
+
+    /**
+     * Die Felder aus 1.12, in genau der Form, in der das Modell sie liest.
+     *
+     * Wie oben: was nicht gilt, wird geleert und nicht nur ausgeblendet. Ein
+     * Mindestpreis an einem Festpreis-Angebot wirkt in dem Moment, in dem
+     * jemand die Preisart umstellt, und niemand hat ihn dann eingetragen.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function normaliseNewFields(array $data, Request $request): array
+    {
+        $data['price_mode'] = ($data['price_mode'] ?? null) === Offer::PRICE_PWYW ? Offer::PRICE_PWYW : Offer::PRICE_FIXED;
+        $frei = $data['price_mode'] === Offer::PRICE_PWYW;
+
+        foreach (['pwyw_min_cent', 'pwyw_suggested_cent', 'pwyw_max_cent'] as $key) {
+            $data[$key] = $frei ? self::ganzzahlOderNull($data[$key] ?? null) : null;
+        }
+
+        if ($frei) {
+            $data['pwyw_min_cent'] ??= 0;
+            // Der Festpreis und seine Begleiter haben bei freiem Betrag keine
+            // Bedeutung; stehen gelassen, kaemen sie beim Zurueckstellen als
+            // Preis zurueck, den niemand bestaetigt hat.
+            $data['amount_cent'] = null;
+            $data['compare_at_cent'] = null;
+            $data['discount_percent'] = null;
+        }
+
+        $stufen = [];
+
+        foreach ((array) ($data['pwyw_thanks'] ?? []) as $zeile) {
+            $text = trim((string) ($zeile['text'] ?? ''));
+
+            if ($frei && is_array($zeile) && $text !== '') {
+                $stufen[] = ['from_cent' => (int) $zeile['from_cent'], 'text' => $text];
+            }
+        }
+
+        usort($stufen, fn (array $a, array $b) => $a['from_cent'] <=> $b['from_cent']);
+        $data['pwyw_thanks'] = $stufen === [] ? null : $stufen;
+
+        $data['setup_fee_cent'] = self::ganzzahlOderNull($data['setup_fee_cent'] ?? null);
+        $data['setup_fee_label'] = $data['setup_fee_cent'] === null ? null : (trim((string) ($data['setup_fee_label'] ?? '')) ?: null);
+
+        $codes = array_values(array_unique(array_map(
+            fn ($code) => strtoupper(trim((string) $code)),
+            array_filter((array) ($data['countries'] ?? []), 'is_string'),
+        )));
+        $modus = $data['country_mode'] ?? Offer::COUNTRIES_ALL;
+        // Ohne Laender keine Regel, und ohne Regel keine Laender: sonst
+        // stuende eine Liste in der Spalte, die wirkt, sobald jemand den
+        // Modus umstellt.
+        $data['country_mode'] = $codes === [] ? Offer::COUNTRIES_ALL : $modus;
+        $data['countries'] = $data['country_mode'] === Offer::COUNTRIES_ALL ? null : $codes;
+
+        $slug = trim((string) ($data['link_slug'] ?? ''));
+        $data['link_slug'] = $slug === '' ? null : $slug;
+
+        foreach (['link_target', 'link_fallback'] as $key) {
+            $data[$key] = trim((string) ($data[$key] ?? '')) ?: null;
+        }
+
+        $data['link_switch_at'] = ($data['link_switch_at'] ?? null) ? Carbon::parse($data['link_switch_at']) : null;
+        $data['link_switch_on_sold_out'] = $request->has('link_switch_on_sold_out')
+            ? $request->boolean('link_switch_on_sold_out')
+            : true;
+
+        $data['seats'] = self::ganzzahlOderNull($data['seats'] ?? null);
+
         return $data;
+    }
+
+    /**
+     * Die Kombinationen, die es nicht gibt, mit dem Fehler am Feld.
+     *
+     * - Frei waehlbarer Betrag und mehrere Zahlweisen: welche Option bekaeme
+     *   den gewaehlten Betrag? Das ist keine Konfiguration, sondern eine Frage.
+     * - Mindestpreis ueber der Obergrenze.
+     * - Einrichtungsgebuehr ohne jeden Rhythmus: sie fiele nie an, und das
+     *   Formular saehe aus, als taete sie es.
+     * - Plaetze mit Rhythmus: jede Folgezahlung muesste die Plaetze
+     *   verlaengern, und das kann diese Fassung nicht. Lieber hier nein als
+     *   ein Abo, dessen Plaetze nach dem ersten Monat ablaufen.
+     */
+    protected function checkNewPriceRules(ValidatorInstance $validator, Request $request): void
+    {
+        $frei = $request->input('price_mode') === Offer::PRICE_PWYW;
+        $optionen = array_filter((array) $request->input('pricing_options', []), 'is_array');
+
+        if ($frei && $optionen !== []) {
+            $validator->errors()->add('price_mode', __('statamic-offers::messages.field_pwyw_no_options'));
+        }
+
+        $min = $request->input('pwyw_min_cent');
+        $max = $request->input('pwyw_max_cent');
+
+        if ($frei && is_numeric($min) && is_numeric($max) && (int) $max < (int) $min) {
+            $validator->errors()->add('pwyw_max_cent', __('statamic-offers::messages.field_pwyw_max_below_min'));
+        }
+
+        $rhythmus = trim((string) $request->input('interval', '')) !== ''
+            || collect($optionen)->contains(fn (array $o) => trim((string) ($o['interval'] ?? '')) !== '');
+
+        if ($request->filled('setup_fee_cent') && ! $rhythmus) {
+            $validator->errors()->add('setup_fee_cent', __('statamic-offers::messages.field_setup_fee_needs_plan'));
+        }
+
+        if ($request->filled('seats') && $rhythmus) {
+            $validator->errors()->add('seats', __('statamic-offers::messages.field_seats_no_plan'));
+        }
+    }
+
+    /**
+     * Der QR-Code des Kurzlinks, als Download.
+     */
+    public function qr(string $offer, string $format)
+    {
+        $this->authorizeAccess();
+
+        $offer = $this->ownOffer($offer);
+        $url = $offer->shortLinkUrl();
+
+        abort_if($url === null, 404);
+
+        return QrDownload::response($url, $format, 'qr-'.$offer->link_slug);
     }
 
     /** Eine Zahl, oder nichts. `''` aus einem leeren Formularfeld ist nichts. */
@@ -766,6 +941,55 @@ class OffersController extends CpController
             'field_confirmation_template_help' => __('statamic-offers::messages.field_confirmation_template_help'),
             'field_confirmation_template_placeholder' => __('statamic-offers::messages.field_confirmation_template_placeholder'),
             'field_confirmation_template_missing' => __('statamic-offers::messages.field_confirmation_template_missing'),
+            'field_price_mode' => __('statamic-offers::messages.field_price_mode'),
+            'field_price_mode_help' => __('statamic-offers::messages.field_price_mode_help'),
+            'price_mode_fixed' => __('statamic-offers::messages.price_mode_fixed'),
+            'price_mode_pwyw' => __('statamic-offers::messages.price_mode_pwyw'),
+            'field_pwyw_min' => __('statamic-offers::messages.field_pwyw_min'),
+            'field_pwyw_suggested' => __('statamic-offers::messages.field_pwyw_suggested'),
+            'field_pwyw_max' => __('statamic-offers::messages.field_pwyw_max'),
+            'field_pwyw_help' => __('statamic-offers::messages.field_pwyw_help'),
+            'field_pwyw_thanks' => __('statamic-offers::messages.field_pwyw_thanks'),
+            'field_pwyw_thanks_help' => __('statamic-offers::messages.field_pwyw_thanks_help'),
+            'field_pwyw_thanks_from' => __('statamic-offers::messages.field_pwyw_thanks_from'),
+            'field_pwyw_thanks_text' => __('statamic-offers::messages.field_pwyw_thanks_text'),
+            'pwyw_thanks_add' => __('statamic-offers::messages.pwyw_thanks_add'),
+            'pwyw_thanks_remove' => __('statamic-offers::messages.pwyw_thanks_remove'),
+            'field_setup_fee' => __('statamic-offers::messages.field_setup_fee'),
+            'field_setup_fee_label' => __('statamic-offers::messages.field_setup_fee_label'),
+            'field_setup_fee_label_placeholder' => __('statamic-offers::messages.field_setup_fee_label_placeholder'),
+            'field_setup_fee_help' => __('statamic-offers::messages.field_setup_fee_help'),
+            'field_country_mode' => __('statamic-offers::messages.field_country_mode'),
+            'country_mode_all' => __('statamic-offers::messages.country_mode_all'),
+            'country_mode_only' => __('statamic-offers::messages.country_mode_only'),
+            'country_mode_except' => __('statamic-offers::messages.country_mode_except'),
+            'field_countries' => __('statamic-offers::messages.field_countries'),
+            'field_countries_placeholder' => __('statamic-offers::messages.field_countries_placeholder'),
+            'field_countries_help' => __('statamic-offers::messages.field_countries_help'),
+            'section_seats' => __('statamic-offers::messages.section_seats'),
+            'field_seats' => __('statamic-offers::messages.field_seats'),
+            'field_seats_help' => __('statamic-offers::messages.field_seats_help'),
+            'section_link' => __('statamic-offers::messages.section_link'),
+            'field_link_slug' => __('statamic-offers::messages.field_link_slug'),
+            'field_link_slug_help' => __('statamic-offers::messages.field_link_slug_help'),
+            'field_link_target' => __('statamic-offers::messages.field_link_target'),
+            'field_link_target_help' => __('statamic-offers::messages.field_link_target_help'),
+            'field_link_fallback' => __('statamic-offers::messages.field_link_fallback'),
+            'field_link_fallback_help' => __('statamic-offers::messages.field_link_fallback_help'),
+            'field_link_switch_at' => __('statamic-offers::messages.field_link_switch_at'),
+            'field_link_switch_at_help' => __('statamic-offers::messages.field_link_switch_at_help'),
+            'field_link_switch_on_sold_out' => __('statamic-offers::messages.field_link_switch_on_sold_out'),
+            'link_copy' => __('statamic-offers::messages.link_copy'),
+            'link_copied' => __('statamic-offers::messages.link_copied'),
+            'link_download_svg' => __('statamic-offers::messages.link_download_svg'),
+            'link_download_png' => __('statamic-offers::messages.link_download_png'),
+            'link_qr' => __('statamic-offers::messages.link_qr'),
+            'link_hits' => __('statamic-offers::messages.link_hits'),
+            'link_hits_target' => __('statamic-offers::messages.link_hits_target', ['count' => ':count']),
+            'link_hits_fallback' => __('statamic-offers::messages.link_hits_fallback', ['count' => ':count']),
+            'link_now_target' => __('statamic-offers::messages.link_now_target'),
+            'link_now_fallback' => __('statamic-offers::messages.link_now_fallback'),
+            'link_save_first' => __('statamic-offers::messages.link_save_first'),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
             'save' => __('Save'),
@@ -773,6 +997,19 @@ class OffersController extends CpController
             'edit_action' => __('Edit'),
             'delete_action' => __('Delete'),
         ];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    protected function countryOptions(): array
+    {
+        return collect(Dictionary::find('countries')->optionItems())
+            ->map(fn ($item) => ['value' => (string) $item['iso2'], 'label' => (string) $item['name']])
+            ->filter(fn (array $o) => preg_match('/^[A-Z]{2}$/', $o['value']) === 1)
+            ->sortBy('label', SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
     }
 
     /**

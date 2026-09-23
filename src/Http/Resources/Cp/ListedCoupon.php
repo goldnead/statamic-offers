@@ -28,6 +28,7 @@ class ListedCoupon extends JsonResource
             'code' => $this->code,
             'name' => $this->name,
             'discount' => $this->discount(),
+            'duration_note' => $this->durationNote(),
             'validity' => $this->validity(),
             // Why a code that is switched on still does nothing. Without it the
             // listing shows "Active: yes" next to a coupon the checkout
@@ -40,6 +41,14 @@ class ListedCoupon extends JsonResource
             // Handed over rather than fetched: the row actions menu would
             // otherwise ask the server the moment it is opened.
             'actions' => Action::for($this->resource, []),
+            // Die Links mit vorbelegtem Code, fertig gebaut, und je einer die
+            // Adresse seines QR-Codes. Im Browser zusammengesetzt waere der
+            // Link eine zweite Wahrheit neben `Coupon::link()`, und die Kasse
+            // liest die erste.
+            'links' => collect($this->resource->links())->map(fn (array $link) => $link + [
+                'qr_svg' => cp_route('utilities.coupons.qr', ['coupon' => $this->id, 'format' => 'svg', 'link' => $link['key']]),
+                'qr_png' => cp_route('utilities.coupons.qr', ['coupon' => $this->id, 'format' => 'png', 'link' => $link['key']]),
+            ])->all(),
             'edit_values' => [
                 'code' => $this->code,
                 'name' => $this->name,
@@ -54,8 +63,28 @@ class ListedCoupon extends JsonResource
                 'ends_at' => $this->ends_at?->format('Y-m-d'),
                 'max_uses' => $this->max_uses,
                 'active' => $this->active,
+                'duration' => $this->resource->duration(),
+                'duration_cycles' => $this->duration_cycles,
+                'applies_to' => $this->resource->scope(),
+                'funnel_wide' => (bool) $this->funnel_wide,
+                'link_url' => $this->link_url,
             ],
         ];
+    }
+
+    /**
+     * Die Dauer in Worten, nur wenn sie vom Normalfall abweicht.
+     *
+     * „Erste Zahlung" steht nicht da: das ist jeder Gutschein, und eine Spalte,
+     * die in jeder Zeile dasselbe sagt, liest niemand.
+     */
+    protected function durationNote(): ?string
+    {
+        return match ($this->resource->duration()) {
+            Coupon::DURATION_REPEATING => __('statamic-offers::messages.coupon_duration_note_repeating', ['count' => max(1, (int) $this->duration_cycles)]),
+            Coupon::DURATION_FOREVER => __('statamic-offers::messages.coupon_duration_note_forever'),
+            default => null,
+        };
     }
 
     protected function discount(): ?string
