@@ -24,6 +24,8 @@ use Illuminate\Support\Carbon;
  * @property list<string>|null $grants
  * @property array{starts_at?: string|null, days?: int|null}|null $access
  * @property string $manage_token
+ * @property Carbon|null $closed_at
+ * @property string|null $closed_reason
  * @property Carbon|null $created_at
  */
 class SeatPool extends Model
@@ -40,7 +42,14 @@ class SeatPool extends Model
             'seats' => 'integer',
             'grants' => 'array',
             'access' => 'array',
+            'closed_at' => 'datetime',
         ];
+    }
+
+    /** Erstattet oder zurueckgebucht: keine Einladung, keine Annahme mehr. */
+    public function isClosed(): bool
+    {
+        return $this->closed_at !== null;
     }
 
     /** @return HasMany<Seat, $this> */

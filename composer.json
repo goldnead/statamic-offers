@@ -19,7 +19,11 @@
     "larastan/larastan": "^3.0",
     "laravel/pint": "^1.18",
     "orchestra/testbench": "^10.0 || ^11.0",
-    "phpunit/phpunit": "^11.0 || ^12.0"
+    "phpunit/phpunit": "^11.0 || ^12.0",
+    "goldnead/statamic-entitlements": "^1.4"
+  },
+  "suggest": {
+    "goldnead/statamic-entitlements": "Grants and revokes the access of seats for groups (^1.4)."
   },
   "autoload": {
     "psr-4": {

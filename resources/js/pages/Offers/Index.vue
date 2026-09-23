@@ -118,6 +118,61 @@ const countriesError = computed(() => {
  */
 const linkPreview = computed(() => (form.value.link_slug ? props.linkBase + form.value.link_slug : ''));
 
+/**
+ * Ein Centbetrag, wie ihn ein Mensch liest, unter dem Feld. Die Felder bleiben
+ * in Cent wie jedes Geldfeld der Familie; die Zeile darunter sagt, was die
+ * Zahl bedeutet, bevor jemand 49 statt 4900 speichert.
+ */
+function money(cent) {
+    if (cent === null || cent === '' || Number.isNaN(Number(cent))) return '';
+
+    try {
+        const text = new Intl.NumberFormat(props.t.locale || 'de', { style: 'currency', currency: props.currency })
+            .format(Number(cent) / 100);
+
+        return props.t.money_preview.replace(':amount', text);
+    } catch (e) {
+        return '';
+    }
+}
+
+/** Die verkauften Kontingente des gerade bearbeiteten Angebots. */
+const seatPools = computed(() => editing.value?.seat_pools ?? []);
+
+const takingBack = ref(null);
+
+const takeBackPrompt = computed(() => (takingBack.value
+    ? props.t.seats_revoke_confirm.replace(':email', takingBack.value.email)
+    : ''));
+
+/**
+ * Zurueckholen. Ein nur eingeladener Platz geht ohne Rueckfrage, ein
+ * angenommener nimmt jemandem einen Zugang, den er schon benutzt, und fragt.
+ */
+function takeBack(row) {
+    if (row.claimed) {
+        takingBack.value = row;
+
+        return;
+    }
+
+    postSeat(row.revoke_url);
+}
+
+function confirmTakeBack() {
+    const row = takingBack.value;
+    takingBack.value = null;
+
+    if (row) postSeat(row.revoke_url);
+}
+
+function postSeat(url) {
+    router.post(url, {}, {
+        preserveScroll: true,
+        onSuccess: () => { open.value = false; listing.value?.refresh(); },
+    });
+}
+
 const savedLink = computed(() => {
     const link = editing.value?.short_link ?? null;
 
@@ -495,6 +550,17 @@ const statusColor = (row) => {
             @confirm="confirmRemove"
         />
 
+        <!-- Rueckfrage vor dem Zurueckholen eines angenommenen Platzes. -->
+        <ConfirmationModal
+            :open="takingBack !== null"
+            :title="t.seat_pools_revoke_title"
+            :body-text="takeBackPrompt"
+            :button-text="t.seat_pools_revoke"
+            danger
+            @update:open="takingBack = $event ? takingBack : null"
+            @confirm="confirmTakeBack"
+        />
+
         <Stack v-model:open="open" size="narrow">
             <!-- Surfaces use core's tokens, never a literal colour: the
                  palette is themeable at runtime, and a hard-coded surface
@@ -580,7 +646,10 @@ const statusColor = (row) => {
                         </Field>
                     </div>
 
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_help }}</p>
+                    <p class="mt-2 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                        {{ [money(form.pwyw_min_cent), money(form.pwyw_suggested_cent), money(form.pwyw_max_cent)].filter(Boolean).join(' · ') }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_help }}</p>
                 </div>
 
                 <div v-if="isPwyw">
@@ -729,7 +798,8 @@ const statusColor = (row) => {
                         </Field>
                     </div>
 
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_setup_fee_help }}</p>
+                    <p v-if="form.setup_fee_cent" class="mt-2 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.setup_fee_cent) }}</p>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.field_setup_fee_help }}</p>
                 </div>
 
                 <!-- Mehrere Zahlweisen an einem Angebot. Steht unter dem
@@ -1027,6 +1097,44 @@ const statusColor = (row) => {
                         @update:model-value="form.seats = $event === '' ? null : Number($event)"
                     />
                 </Field>
+
+                <!-- Was schon verkauft ist. Je Kauf die Kaeuferin, wie viele
+                     Plaetze vergeben sind, und die Plaetze selbst. -->
+                <div v-if="editing && (form.seats || seatPools.length)">
+                    <Subheading :text="t.section_seat_pools" />
+
+                    <p v-if="!seatPools.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.seat_pools_empty }}</p>
+
+                    <div
+                        v-for="pool in seatPools"
+                        :key="pool.id"
+                        class="mt-3 rounded-md border border-gray-300 p-3 dark:border-gray-700"
+                    >
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-sm font-medium">{{ pool.owner_name || pool.owner_email }}</p>
+                                <p class="truncate text-xs text-gray-500 dark:text-gray-400">
+                                    {{ pool.owner_name ? pool.owner_email + ' · ' : '' }}{{ pool.created_at }}
+                                </p>
+                            </div>
+                            <Badge v-if="pool.closed" color="red" pill :text="t.seat_pools_closed" />
+                            <Badge v-else pill :text="t.seat_pools_taken.replace(':taken', pool.taken).replace(':seats', pool.seats)" />
+                        </div>
+
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <Button size="sm" icon="mail" :text="t.seat_pools_resend" :disabled="pool.closed" @click="postSeat(pool.resend_url)" />
+                            <Button size="sm" icon="external-link" :href="pool.manage_url" target="_blank" :text="t.seat_pools_open" />
+                        </div>
+
+                        <ul v-if="pool.rows.length" class="mt-3 divide-y divide-gray-200 border-t border-gray-200 text-sm dark:divide-gray-700 dark:border-gray-700">
+                            <li v-for="row in pool.rows" :key="row.id" class="flex items-center gap-2 py-2">
+                                <span class="min-w-0 flex-1 truncate">{{ row.name ? row.name + ' · ' : '' }}{{ row.email }}</span>
+                                <Badge pill :color="row.claimed ? 'green' : 'default'" :text="row.claimed ? t.seat_pools_claimed : t.seat_pools_invited" />
+                                <Button size="xs" variant="ghost" :text="t.seat_pools_revoke" @click="takeBack(row)" />
+                            </li>
+                        </ul>
+                    </div>
+                </div>
 
                 <!-- Checkout fields: picks from the library in the config.
                      The library says what a field is; the offer only says

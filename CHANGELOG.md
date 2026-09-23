@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Five migrations (additive, existing rows keep their behaviour): price modes and setup fee, country
+Six migrations (additive, existing rows keep their behaviour): price modes and setup fee, country
 rule, short link, coupon duration and scope, seat pools.
 
 ### Added: pay what you want (O1)
@@ -50,6 +50,26 @@ payment, whole basket".
 `seats` on an offer: one purchase, n accesses. The buyer gets a manage link by mail, invites people
 by email, takes seats back and gives them again; access is granted on acceptance through
 `statamic-entitlements` (optional) behind `Contracts\SeatAccess`.
+
+### Seats, round two (O7)
+
+- A full refund or a chargeback closes the pools of the payment (`closed_at`, new additive
+  migration) and takes every seat back; a closed pool refuses invitations and acceptances.
+- Access is written and revoked under the brand of the pool, not the brand of the request
+  (`brand-context` `runFor`). Tested against the real `statamic-entitlements`.
+- Taking a seat back reads its state from the database and makes it a condition of the update, so an
+  acceptance between reading and taking back is no longer missed.
+- The offer panel lists the pools sold, with "resend link" and "take back" (asks first for accepted
+  seats). The buyer's page asks too.
+- The name on an invitation is limited to letters, spaces, `-`, `.`, `'` and 80 characters: it is
+  the greeting of a mail sent under this site's sender.
+
+### Pay what you want, round two (O1)
+
+- The minimum is a floor after a coupon too.
+- An amount out of bounds throws `AmountNotAccepted` (still an `InvalidArgumentException`) with
+  `buyerMessage()`.
+- The new money fields say "in cents" and show the amount as it reads below the field.
 
 ### Fixed: purchases with a suffix did not count
 

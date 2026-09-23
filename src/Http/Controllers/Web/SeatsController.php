@@ -34,7 +34,8 @@ class SeatsController extends Controller
             'title' => $pool->title(),
             'seats' => $seats,
             'taken' => $seats->count(),
-            'free' => max(0, $pool->seats - $seats->count()),
+            'free' => $pool->isClosed() ? 0 : max(0, $pool->seats - $seats->count()),
+            'closed' => $pool->isClosed(),
         ]);
     }
 
@@ -44,7 +45,14 @@ class SeatsController extends Controller
 
         $data = $request->validate([
             'email' => ['required', 'email', 'max:191'],
-            'name' => ['nullable', 'string', 'max:191'],
+            // Der Name steht als Anrede in einer Mail, die unter dem Absender
+            // dieser Site an eine fremde Adresse geht. Frei beschreibbar waere
+            // er eine Phishing-Vorlage mit echtem Absender: ein Link, ein
+            // Absatz, ein halber Brief. Also nur, was in Namen vorkommt.
+            'name' => ['nullable', 'string', 'max:80', "regex:/^[\\pL\\pM][\\pL\\pM '.\\-]*$/u"],
+        ], [
+            'name.regex' => __('statamic-offers::messages.seats_name_invalid'),
+            'name.max' => __('statamic-offers::messages.seats_name_invalid'),
         ]);
 
         $seat = $this->pools->invite($pool, (string) $data['email'], $data['name'] ?? null);
@@ -105,12 +113,16 @@ class SeatsController extends Controller
         return SeatPool::query()->where('manage_token', $token)->firstOrFail();
     }
 
-    /** Ein zurueckgeholter Platz ist fuer die Eingeladene nicht mehr da. */
+    /**
+     * Ein zurueckgeholter Platz ist fuer die Eingeladene nicht mehr da, und
+     * einer aus einem geschlossenen Kontingent auch nicht.
+     */
     protected function seat(string $token): Seat
     {
         return Seat::query()
             ->where('token', $token)
             ->where('status', '!=', Seat::STATUS_REVOKED)
+            ->whereHas('pool', fn ($q) => $q->whereNull('closed_at'))
             ->firstOrFail();
     }
 }

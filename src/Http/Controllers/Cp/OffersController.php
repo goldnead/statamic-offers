@@ -4,8 +4,11 @@ namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 
 use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Models\Seat;
+use Goldnead\StatamicOffers\Models\SeatPool;
 use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\QrDownload;
+use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Support\Setup;
 use Goldnead\StatamicPayments\Support\Brands;
 use Goldnead\StatamicPayments\Support\Catalogue;
@@ -627,6 +630,46 @@ class OffersController extends CpController
         }
     }
 
+    /** Den Verwaltungslink eines Kontingents noch einmal an die Kaeuferin schicken. */
+    public function resendSeats(string $pool, SeatPools $pools)
+    {
+        $this->authorizeAccess();
+
+        $pool = $this->ownPool($pool);
+        $pools->resend($pool);
+
+        return back()->with('message', __('statamic-offers::messages.seats_resent', ['email' => $pool->owner_email]));
+    }
+
+    /** Einen Platz aus dem CP zurueckholen; dieselbe Regel wie auf der Seite der Kaeuferin. */
+    public function revokeSeat(string $pool, string $seat, SeatPools $pools)
+    {
+        $this->authorizeAccess();
+
+        $pool = $this->ownPool($pool);
+        $row = Seat::query()->where('pool_id', $pool->getKey())->whereKey($seat)->firstOrFail();
+
+        $pools->revoke($row, 'Platz im Control Panel zurückgeholt (Kontingent '.$pool->getKey().')');
+
+        return back()->with('message', __('statamic-offers::messages.seats_revoked', ['email' => $row->email]));
+    }
+
+    /**
+     * Ein Kontingent, dessen Angebot dieser Marke gehoert, sonst 404.
+     *
+     * Ueber das Angebot und nicht ueber `brand_id` am Kontingent allein: das
+     * Angebot ist, was die Liste zeigt, und dieselbe Frage muss dieselbe
+     * Antwort geben.
+     */
+    protected function ownPool(string $id): SeatPool
+    {
+        $pool = SeatPool::query()->findOrFail($id);
+
+        abort_unless(Offer::query()->forBrand()->where('handle', $pool->offer)->exists(), 404);
+
+        return $pool;
+    }
+
     /**
      * Der QR-Code des Kurzlinks, als Download.
      */
@@ -990,6 +1033,19 @@ class OffersController extends CpController
             'link_now_target' => __('statamic-offers::messages.link_now_target'),
             'link_now_fallback' => __('statamic-offers::messages.link_now_fallback'),
             'link_save_first' => __('statamic-offers::messages.link_save_first'),
+            'section_seat_pools' => __('statamic-offers::messages.section_seat_pools'),
+            'seat_pools_empty' => __('statamic-offers::messages.seat_pools_empty'),
+            'seat_pools_taken' => __('statamic-offers::messages.seat_pools_taken', ['taken' => ':taken', 'seats' => ':seats']),
+            'seat_pools_closed' => __('statamic-offers::messages.seat_pools_closed'),
+            'seat_pools_resend' => __('statamic-offers::messages.seat_pools_resend'),
+            'seat_pools_open' => __('statamic-offers::messages.seat_pools_open'),
+            'seat_pools_revoke' => __('statamic-offers::messages.seat_pools_revoke'),
+            'seat_pools_revoke_title' => __('statamic-offers::messages.seat_pools_revoke_title'),
+            'seat_pools_claimed' => __('statamic-offers::messages.seat_pools_claimed'),
+            'seat_pools_invited' => __('statamic-offers::messages.seat_pools_invited'),
+            'seats_revoke_confirm' => __('statamic-offers::messages.seats_revoke_confirm', ['email' => ':email']),
+            'money_preview' => __('statamic-offers::messages.money_preview', ['amount' => ':amount']),
+            'locale' => str_replace('_', '-', (string) app()->getLocale()),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
             'save' => __('Save'),

@@ -2,8 +2,10 @@
 
 namespace Goldnead\StatamicOffers\Tests\Feature;
 
+use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Offers;
+use Goldnead\StatamicOffers\Support\AmountNotAccepted;
 use Goldnead\StatamicOffers\Support\Basket;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Goldnead\StatamicPayments\Support\Catalogue;
@@ -105,6 +107,38 @@ class PayWhatYouWantTest extends TestCase
 
         $this->expectException(InvalidArgumentException::class);
         Basket::make($offer, amountCent: 999);
+    }
+
+    #[Test]
+    public function an_amount_out_of_bounds_says_so_to_the_buyer(): void
+    {
+        $offer = $this->offer(['pwyw_max_cent' => 20000]);
+
+        try {
+            Basket::make($offer, amountCent: 30000);
+            $this->fail('Kein Fehler fuer einen Betrag ueber dem Hoechstbetrag.');
+        } catch (AmountNotAccepted $e) {
+            // Eine eigene Ausnahme, damit die Kasse sie von einem kaputten
+            // Formular unterscheidet, und ein Satz, der die Grenzen nennt.
+            $this->assertInstanceOf(InvalidArgumentException::class, $e);
+            $this->assertStringContainsString('10', $e->buyerMessage());
+            $this->assertStringContainsString('200', $e->buyerMessage());
+        }
+    }
+
+    #[Test]
+    public function a_coupon_cannot_push_a_chosen_amount_below_the_minimum(): void
+    {
+        $offer = $this->offer();
+        Coupon::create(['code' => 'HALB', 'percent' => 50, 'active' => true]);
+
+        // 15,00 gewaehlt, 50 % waeren 7,50 und damit unter dem Mindestpreis
+        // von 10,00. Der Boden gilt auch nach dem Rabatt: abgezogen wird
+        // hoechstens, was ueber dem Mindestpreis liegt.
+        $basket = Basket::make($offer, [], 'HALB', amountCent: 1500);
+
+        $this->assertSame(500, $basket->discount()->amountCent);
+        $this->assertSame(1000, $basket->netCent());
     }
 
     #[Test]

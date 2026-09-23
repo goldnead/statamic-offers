@@ -3,11 +3,14 @@
 namespace Goldnead\StatamicOffers\Http\Resources\Cp;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Models\Seat;
+use Goldnead\StatamicOffers\Models\SeatPool;
 use Goldnead\StatamicOffers\Support\CpNumber;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Support\OfferUsage;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * One row.
@@ -43,6 +46,11 @@ class ListedOffer extends JsonResource
             // Der Kurzlink, fertig gebaut, mit den Zaehlern und dem Ziel, zu
             // dem er gerade fuehrt. Null ohne Link.
             'short_link' => $this->shortLink(),
+            // Die Kontingente dieses Angebots, fuer den Abschnitt „Plaetze" im
+            // Formular. Nur bei einem Angebot mit Plaetzen, und die neuesten 50:
+            // ein Angebot mit tausend Gruppenkaeufen gehoert in einen eigenen
+            // Bildschirm, nicht in eine Zeile der Liste.
+            'seat_pools' => $this->seatPools(),
             'currency' => $this->currency(),
             'compare_at' => $this->money($this->effectiveCompareAtCent()),
             'own_price' => $this->amount_cent !== null,
@@ -155,6 +163,53 @@ class ListedOffer extends JsonResource
                 'seats' => $this->seats,
             ],
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    protected function seatPools(): array
+    {
+        // Auch ohne `seats` am Angebot: wer die Plaetze spaeter abschaltet,
+        // hat die verkauften Kontingente damit nicht aus der Welt.
+        if (! $this->hasPoolsTable()) {
+            return [];
+        }
+
+        return SeatPool::query()
+            ->where('offer', $this->handle)
+            ->with(['seatRows' => fn ($q) => $q->where('status', '!=', Seat::STATUS_REVOKED)->orderBy('id')])
+            ->latest('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (SeatPool $pool) => [
+                'id' => $pool->id,
+                'owner_email' => $pool->owner_email,
+                'owner_name' => $pool->owner_name,
+                'seats' => $pool->seats,
+                'taken' => $pool->seatRows->count(),
+                'closed' => $pool->isClosed(),
+                'created_at' => $pool->created_at?->locale(app()->getLocale())->isoFormat('L'),
+                'manage_url' => route('statamic-offers.seats.manage', $pool->manage_token),
+                'resend_url' => cp_route('utilities.offers.seats.resend', $pool->id),
+                'rows' => $pool->seatRows->map(fn (Seat $seat) => [
+                    'id' => $seat->id,
+                    'email' => $seat->email,
+                    'name' => $seat->name,
+                    'claimed' => $seat->status === Seat::STATUS_CLAIMED,
+                    'revoke_url' => cp_route('utilities.offers.seats.revoke', [$pool->id, $seat->id]),
+                ])->values()->all(),
+            ])
+            ->all();
+    }
+
+    protected function hasPoolsTable(): bool
+    {
+        // Nur das Ja wird gemerkt: eine fehlende Tabelle fragt beim naechsten
+        // Mal wieder, statt nach der Migration weiter „nein" zu sagen.
+        static $da = false;
+
+        return $da = $da || (Schema::hasTable('offer_seat_pools') && Schema::hasColumn('offer_seat_pools', 'closed_at'));
     }
 
     /**

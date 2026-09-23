@@ -119,7 +119,11 @@ class SeatPools
         $email = mb_strtolower(trim($email));
 
         $seat = DB::transaction(function () use ($pool, $email, $name): Seat {
-            SeatPool::query()->whereKey($pool->getKey())->lockForUpdate()->first();
+            $frisch = SeatPool::query()->whereKey($pool->getKey())->lockForUpdate()->first();
+
+            if ($frisch === null || $frisch->isClosed()) {
+                throw ValidationException::withMessages(['email' => __('statamic-offers::messages.seats_closed')]);
+            }
 
             $belegt = $pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED);
 
@@ -154,6 +158,14 @@ class SeatPools
      */
     public function accept(Seat $seat): bool
     {
+        $pool = $seat->pool;
+
+        // Ein geschlossenes Kontingent vergibt nichts mehr. Die Seite fragt
+        // vorher schon; das hier ist die Wache fuer jeden anderen Weg.
+        if ($pool->fresh()?->isClosed() ?? true) {
+            return false;
+        }
+
         $gewonnen = Seat::query()
             ->whereKey($seat->getKey())
             ->where('status', Seat::STATUS_INVITED)
@@ -163,8 +175,7 @@ class SeatPools
             return false;
         }
 
-        $pool = $seat->pool;
-        $this->access->grant($seat->email, $pool->grantList(), $seat->sourceRef(), $pool->access);
+        $this->inBrandOf($pool, fn () => $this->access->grant($seat->email, $pool->grantList(), $seat->sourceRef(), $pool->access));
 
         return true;
     }
@@ -174,30 +185,122 @@ class SeatPools
      *
      * War er angenommen, wird der Zugang entzogen, mit Grund. War er nur
      * eingeladen, gibt es nichts zu entziehen; die Einladung gilt nicht mehr.
+     *
+     * **Der Stand vorher kommt aus der Datenbank, und das UPDATE setzt ihn
+     * voraus.** Mit dem Stand aus dem uebergebenen Objekt konnte eine Annahme
+     * zwischen Lesen und Zurueckholen durchrutschen: das Objekt sagte
+     * „eingeladen", der Platz war inzwischen angenommen, und entzogen wurde
+     * nichts. Jetzt gewinnt das UPDATE nur, wenn der Stand noch derselbe ist;
+     * sonst wird neu gelesen.
      */
-    public function revoke(Seat $seat): bool
+    public function revoke(Seat $seat, ?string $reason = null): bool
     {
-        $vorher = $seat->status;
+        for ($versuch = 0; $versuch < 3; $versuch++) {
+            $vorher = Seat::query()->whereKey($seat->getKey())->value('status');
 
-        $gewonnen = Seat::query()
-            ->whereKey($seat->getKey())
-            ->where('status', '!=', Seat::STATUS_REVOKED)
-            ->update(['status' => Seat::STATUS_REVOKED, 'revoked_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
+            if ($vorher === null || $vorher === Seat::STATUS_REVOKED) {
+                return false;
+            }
+
+            $gewonnen = Seat::query()
+                ->whereKey($seat->getKey())
+                ->where('status', $vorher)
+                ->update(['status' => Seat::STATUS_REVOKED, 'revoked_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
+
+            if ($gewonnen === 0) {
+                continue;
+            }
+
+            if ($vorher === Seat::STATUS_CLAIMED) {
+                $pool = $seat->pool;
+
+                $this->inBrandOf($pool, fn () => $this->access->revoke(
+                    $seat->email,
+                    $pool->grantList(),
+                    $seat->sourceRef(),
+                    $reason ?? 'Platz von der Käuferin zurückgeholt (Kontingent '.$seat->pool_id.')',
+                ));
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Das Kontingent schliessen: volle Erstattung oder Rueckbuchung.
+     *
+     * Jeder Platz wird zurueckgeholt, angenommene mit Entzug des Zugangs. Ein
+     * bedingtes UPDATE auf `closed_at`, damit zwei Zustellungen desselben
+     * Ereignisses nur einmal schliessen.
+     */
+    public function close(SeatPool $pool, string $reason): bool
+    {
+        $gewonnen = SeatPool::query()
+            ->whereKey($pool->getKey())
+            ->whereNull('closed_at')
+            ->update(['closed_at' => Carbon::now(), 'closed_reason' => mb_substr($reason, 0, 191), 'updated_at' => Carbon::now()]);
 
         if ($gewonnen === 0) {
             return false;
         }
 
-        if ($vorher === Seat::STATUS_CLAIMED) {
-            $this->access->revoke(
-                $seat->email,
-                $seat->pool->grantList(),
-                $seat->sourceRef(),
-                'Platz von der Käuferin zurückgeholt (Kontingent '.$seat->pool_id.')',
-            );
+        foreach ($pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED)->get() as $seat) {
+            $this->revoke($seat, $reason);
         }
 
         return true;
+    }
+
+    /**
+     * Den Verwaltungslink noch einmal an die Kaeuferin schicken.
+     *
+     * An die Adresse des Kaufs und an keine andere: wer den Link an eine
+     * beliebige Adresse schicken koennte, gaebe fremde Plaetze weiter.
+     */
+    public function resend(SeatPool $pool): void
+    {
+        Mail::to($pool->owner_email)->send(new SeatPoolMail($pool));
+    }
+
+    /**
+     * Alle Kontingente einer Zahlung schliessen.
+     *
+     * @return int wie viele geschlossen wurden
+     */
+    public function closeForPayment(Payment $payment, string $reason): int
+    {
+        $geschlossen = 0;
+
+        foreach (SeatPool::query()->where('payment_id', $payment->getKey())->get() as $pool) {
+            $geschlossen += $this->close($pool, $reason) ? 1 : 0;
+        }
+
+        return $geschlossen;
+    }
+
+    /**
+     * Den Zugang unter der Marke des Kontingents schreiben, nicht unter der
+     * der Anfrage.
+     *
+     * Die Seiten der Plaetze werden aus einer Mail geoeffnet, und welche Marke
+     * die Anfrage traegt, entscheidet die Site, unter der der Link aufgerufen
+     * wird. entitlements stempelt die Marke beim Anlegen aus der aktuellen und
+     * sucht beim Entziehen nur in ihr. Beides muss die Marke des Kaufs sein.
+     *
+     * Null ist ein Betrieb ohne Mandanten; dort gibt es nichts umzustellen,
+     * und `runFor(0)` kennte keine Marke.
+     */
+    protected function inBrandOf(SeatPool $pool, callable $tun): void
+    {
+        if ($pool->brand_id > 0 && app()->bound('brand-context')) {
+            app('brand-context')->runFor($pool->brand_id, fn () => $tun());
+
+            return;
+        }
+
+        $tun();
     }
 
     /**

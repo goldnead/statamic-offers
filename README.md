@@ -255,8 +255,12 @@ other and charges what the catalogue says.
 
 ```php
 $basket = Basket::make($offer, amountCent: (int) $request->input('amount_cent'));
-// throws InvalidArgumentException outside the bounds; without an amount, the suggestion is used
+// throws AmountNotAccepted (an InvalidArgumentException with buyerMessage()) outside the bounds;
+// without an amount, the suggestion is used
 ```
+
+**The minimum is a floor after discounts too.** A coupon takes at most the part of the chosen
+amount above the minimum (plus the bumps, for a coupon on the whole basket).
 
 A subscription at a chosen amount charges that amount every cycle, because the renewals read the
 same handle. Pay what you want does not combine with several payment options (the form refuses it).
@@ -328,7 +332,16 @@ taken back revokes that access with a reason and frees the place.
 
 Both pages are authorised by a 48-character token and nothing else, because the people who open
 them have no account here. Seats are one-off purchases only; the form refuses seats with a rhythm.
-Bind your own `Contracts\SeatAccess` to grant access some other way.
+Bind your own `Contracts\SeatAccess` to grant access some other way. Access is written under the
+brand of the pool, not the brand of the request that opened the page.
+
+**Money back, seats back.** A full refund or a chargeback (payments 1.23+) closes every pool of the
+payment: all seats are taken back, accepted ones lose their access, and the pool takes no further
+invitation or acceptance. A partial refund closes nothing; the buyer decides which seat goes.
+
+In the Control Panel the offer panel lists the pools sold (buyer, seats given, closed or open), with
+**Resend link** (to the buyer's address only) and **Take back** per seat, which asks first for an
+accepted seat.
 
 ### Counting
 

@@ -794,6 +794,15 @@ class ServiceProvider extends AddonServiceProvider
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
                 $router->post('/', [OffersController::class, 'store'])->name('store');
+                // Plaetze: Verwaltungslink neu senden, einen Platz zurueckholen.
+                // Vor `{offer}`, sonst liest der Router „seats" als Angebot.
+                $router->post('seats/{pool}/resend', [OffersController::class, 'resendSeats'])
+                    ->whereNumber('pool')
+                    ->name('seats.resend');
+                $router->post('seats/{pool}/{seat}/revoke', [OffersController::class, 'revokeSeat'])
+                    ->whereNumber('pool')
+                    ->whereNumber('seat')
+                    ->name('seats.revoke');
                 // Der QR-Code des Kurzlinks, als Download.
                 $router->get('{offer}/qr.{format}', [OffersController::class, 'qr'])
                     ->where('format', 'svg|png')

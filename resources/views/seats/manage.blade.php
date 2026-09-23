@@ -6,9 +6,16 @@
     <h1>{{ $title }}</h1>
     <p class="lede">{{ __('statamic-offers::messages.seats_manage_lede') }}</p>
 
-    <p class="count" aria-label="{{ __('statamic-offers::messages.seats_taken_label') }}">{{ $taken }} / {{ $pool->seats }}</p>
-    <p class="muted">{{ trans_choice('statamic-offers::messages.seats_free', $free, ['count' => $free]) }}</p>
+    @if ($closed)
+        <p class="errors" role="status">{{ __('statamic-offers::messages.seats_closed') }}</p>
+    @endif
 
+    <p class="count" aria-label="{{ __('statamic-offers::messages.seats_taken_label') }}">{{ $taken }} / {{ $pool->seats }}</p>
+    @unless ($closed)
+        <p class="muted">{{ trans_choice('statamic-offers::messages.seats_free', $free, ['count' => $free]) }}</p>
+    @endunless
+
+    @unless ($closed)
     <section class="block">
         <h2>{{ __('statamic-offers::messages.seats_invite_heading') }}</h2>
         <p class="hint">{{ __('statamic-offers::messages.seats_invite_hint') }}</p>
@@ -30,6 +37,7 @@
             <button class="btn" type="submit" @disabled($free === 0)>{{ __('statamic-offers::messages.seats_invite_action') }}</button>
         </form>
     </section>
+    @endunless
 
     <section class="block">
         <h2>{{ __('statamic-offers::messages.seats_list_heading') }}</h2>
@@ -51,7 +59,14 @@
                         @else
                             <span class="badge">{{ __('statamic-offers::messages.seats_status_invited') }}</span>
                         @endif
-                        <form method="post" action="{{ route('statamic-offers.seats.revoke', [$pool->manage_token, $seat->id]) }}">
+                        {{-- Rueckfrage nur bei angenommenen Plaetzen: dort nimmt der
+                             Knopf jemandem einen Zugang, den er schon benutzt. --}}
+                        <form method="post" action="{{ route('statamic-offers.seats.revoke', [$pool->manage_token, $seat->id]) }}"
+                            @if ($seat->status === \Goldnead\StatamicOffers\Models\Seat::STATUS_CLAIMED)
+                                onsubmit="return confirm(this.dataset.confirm)"
+                                data-confirm="{{ __('statamic-offers::messages.seats_revoke_confirm', ['email' => $seat->email]) }}"
+                            @endif
+                        >
                             @csrf
                             <button class="btn btn-quiet" type="submit">{{ __('statamic-offers::messages.seats_revoke_action') }}</button>
                         </form>

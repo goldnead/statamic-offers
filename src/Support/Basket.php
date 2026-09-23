@@ -95,10 +95,7 @@ class Basket
             // `Checkout::start()` gaebe dann ein stummes `null` zurueck, und die
             // Kasse muesste raten, warum.
             if (! $offer->acceptsAmount($gewaehlt)) {
-                throw new \InvalidArgumentException(
-                    'statamic-offers: '.$gewaehlt.' liegt ausserhalb der Grenzen von '.$offer->handle
-                    .' ('.$offer->pwywMinCent().' bis '.$offer->pwywMaxCent().').'
-                );
+                throw AmountNotAccepted::forOffer($offer, $gewaehlt);
             }
         } elseif ($amountCent !== null) {
             // Ein Betrag an einem Festpreis-Angebot ist ein Formular, das nicht
@@ -322,8 +319,25 @@ class Basket
     protected function offCent(Coupon $coupon): int
     {
         $base = $this->couponBaseCent($coupon);
+        $off = max(0, $base - $coupon->apply($base, $this->currency()));
 
-        return max(0, $base - $coupon->apply($base, $this->currency()));
+        // **Der Mindestpreis ist ein Boden, auch nach dem Rabatt.** Wer
+        // „ab 10 Euro" anbietet, meint nicht „ab 5 Euro mit dem Herbstcode".
+        // Also kommt vom frei gewaehlten Betrag hoechstens herunter, was ueber
+        // dem Mindestpreis liegt; bei einem Gutschein auf den ganzen Korb
+        // zusaetzlich die Bumps, die keinen Boden haben. (Entscheidung als
+        // Vorgabe vom 23.09.2026; umstellbar, wenn Adrian es anders will.)
+        if ($this->chosenAmountCent !== null && $coupon->scope() !== Coupon::APPLIES_BUMPS) {
+            $spielraum = max(0, $this->chosenAmountCent - $this->offer->pwywMinCent());
+
+            if ($coupon->scope() === Coupon::APPLIES_ORDER) {
+                $spielraum += $this->bumpsCent();
+            }
+
+            $off = min($off, $spielraum);
+        }
+
+        return $off;
     }
 
     /**

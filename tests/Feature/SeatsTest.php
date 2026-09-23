@@ -8,13 +8,17 @@ use Goldnead\StatamicOffers\Mail\SeatPoolMail;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Tests\TestCase;
 use Goldnead\StatamicPayments\Models\Payment;
 use Goldnead\StatamicPayments\Support\Catalogue;
+use Goldnead\StatamicPayments\Support\Chargebacks;
 use Goldnead\StatamicPayments\Support\Checkout;
 use Goldnead\StatamicPayments\Support\Fulfilment;
+use Goldnead\StatamicPayments\Support\Refunds;
 use Illuminate\Support\Facades\Mail;
 use PHPUnit\Framework\Attributes\Test;
+use Statamic\Facades\Role;
 use Statamic\Facades\User;
 
 /**
@@ -252,6 +256,143 @@ class SeatsTest extends TestCase
 
         $this->post(route('statamic-offers.seats.revoke', [$eins->manage_token, $seat->id]))->assertNotFound();
         $this->assertSame(Seat::STATUS_INVITED, $seat->fresh()->status);
+    }
+
+    /** Kauf, zwei Einladungen, eine davon angenommen. */
+    protected function poolWithOneAccepted(): array
+    {
+        $this->offer();
+        $payment = $this->buy();
+        $pool = SeatPool::query()->first();
+        $this->post(route('statamic-offers.seats.invite', $pool->manage_token), ['email' => 'sopran@chor.example']);
+        $this->post(route('statamic-offers.seats.invite', $pool->manage_token), ['email' => 'alt@chor.example']);
+        $angenommen = Seat::query()->where('email', 'sopran@chor.example')->first();
+        $this->post(route('statamic-offers.seats.accept', $angenommen->token));
+
+        return [$payment, $pool, $angenommen];
+    }
+
+    #[Test]
+    public function a_full_refund_closes_the_pool_and_takes_every_access_back(): void
+    {
+        [$payment, $pool, $angenommen] = $this->poolWithOneAccepted();
+
+        // Der echte Weg: payments bucht die Erstattung und feuert das Ereignis.
+        app(Refunds::class)->record($payment->fresh(), $payment->amount_cent, 're_1');
+
+        $this->assertNotNull($pool->fresh()->closed_at);
+        $this->assertSame([['sopran@chor.example', ['workshop-zugang'], 'seat:'.$angenommen->id]], $this->access->revoked);
+        $this->assertSame(0, Seat::query()->where('status', '!=', Seat::STATUS_REVOKED)->count());
+
+        // Geschlossen heisst: keine neue Einladung, keine Annahme.
+        $this->post(route('statamic-offers.seats.invite', $pool->manage_token), ['email' => 'neu@chor.example'])
+            ->assertSessionHasErrors('email');
+        $this->assertSame(2, Seat::query()->count());
+    }
+
+    #[Test]
+    public function a_partial_refund_leaves_the_pool_open(): void
+    {
+        [$payment, $pool] = $this->poolWithOneAccepted();
+
+        app(Refunds::class)->record($payment->fresh(), 1000, 're_teil');
+
+        $this->assertNull($pool->fresh()->closed_at);
+        $this->assertSame([], $this->access->revoked);
+    }
+
+    #[Test]
+    public function a_chargeback_closes_the_pool(): void
+    {
+        if (! class_exists(Chargebacks::class)) {
+            $this->markTestSkipped('statamic-payments ohne Rueckbuchungen (vor 1.23).');
+        }
+
+        [$payment, $pool, $angenommen] = $this->poolWithOneAccepted();
+
+        app(Chargebacks::class)->record($payment->fresh(), 'chb_1', $payment->amount_cent);
+
+        $this->assertNotNull($pool->fresh()->closed_at);
+        $this->assertCount(1, $this->access->revoked);
+        $this->assertSame(Seat::STATUS_REVOKED, $angenommen->fresh()->status);
+    }
+
+    #[Test]
+    public function an_invitation_of_a_closed_pool_cannot_be_accepted(): void
+    {
+        [$payment, $pool] = $this->poolWithOneAccepted();
+        $offen = Seat::query()->where('email', 'alt@chor.example')->first();
+
+        app(SeatPools::class)->close($pool, 'Test');
+
+        $this->post(route('statamic-offers.seats.accept', $offen->token))->assertNotFound();
+        $this->assertCount(0, array_filter($this->access->granted, fn ($g) => $g[0] === 'alt@chor.example'));
+    }
+
+    #[Test]
+    public function a_seat_taken_back_twice_revokes_once(): void
+    {
+        [, , $angenommen] = $this->poolWithOneAccepted();
+
+        // Zwei Anfragen mit demselben, noch „angenommenen" Stand. Die zweite
+        // darf nicht erneut entziehen und nicht so tun, als haette sie es getan.
+        $alt = Seat::query()->find($angenommen->id);
+        $this->assertTrue(app(SeatPools::class)->revoke($angenommen));
+        $this->assertFalse(app(SeatPools::class)->revoke($alt));
+
+        $this->assertCount(1, $this->access->revoked);
+    }
+
+    #[Test]
+    public function the_name_on_an_invitation_is_bounded(): void
+    {
+        $this->offer();
+        $this->buy();
+        $pool = SeatPool::query()->first();
+
+        // Ein Name ist die Anrede in einer Mail, die unter fremdem Absender
+        // rausgeht. Ein Link oder ein Absatz darin waere eine Phishing-Vorlage.
+        foreach (['Klick hier: https://boese.example', str_repeat('A', 81), "Anna\nZeile"] as $name) {
+            $this->post(route('statamic-offers.seats.invite', $pool->manage_token), ['email' => 'x@chor.example', 'name' => $name])
+                ->assertSessionHasErrors('name');
+        }
+
+        $this->post(route('statamic-offers.seats.invite', $pool->manage_token), ['email' => 'x@chor.example', 'name' => "Anna-Lena O'Neill"])
+            ->assertSessionHasNoErrors();
+    }
+
+    #[Test]
+    public function the_control_panel_lists_the_pools_and_can_resend_and_take_back(): void
+    {
+        [, $pool, $angenommen] = $this->poolWithOneAccepted();
+        $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
+        Mail::fake();
+
+        $row = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))
+            ->firstWhere('handle', 'stimmgruppe');
+
+        $this->assertSame('leitung@chor.example', $row['seat_pools'][0]['owner_email']);
+        $this->assertSame(2, $row['seat_pools'][0]['taken']);
+        $this->assertSame(10, $row['seat_pools'][0]['seats']);
+        $this->assertCount(2, $row['seat_pools'][0]['rows']);
+
+        $this->post(cp_route('utilities.offers.seats.resend', $pool->id))->assertRedirect();
+        Mail::assertSent(SeatPoolMail::class, fn (SeatPoolMail $m) => $m->hasTo('leitung@chor.example'));
+
+        $this->post(cp_route('utilities.offers.seats.revoke', [$pool->id, $angenommen->id]))->assertRedirect();
+        $this->assertSame(Seat::STATUS_REVOKED, $angenommen->fresh()->status);
+    }
+
+    #[Test]
+    public function the_control_panel_seat_routes_need_the_permission(): void
+    {
+        [, $pool, $angenommen] = $this->poolWithOneAccepted();
+        $role = tap(Role::make('nur-cp')->addPermission('access cp'))->save();
+        $user = tap(User::make()->email('ohne@example.com')->assignRole($role))->save();
+
+        $this->actingAs($user)->postJson(cp_route('utilities.offers.seats.resend', $pool->id))->assertForbidden();
+        $this->actingAs($user)->postJson(cp_route('utilities.offers.seats.revoke', [$pool->id, $angenommen->id]))->assertForbidden();
+        $this->assertSame(Seat::STATUS_CLAIMED, $angenommen->fresh()->status);
     }
 
     #[Test]
