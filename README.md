@@ -298,6 +298,11 @@ A link only prefills. The code is redeemed in the basket against the same table 
 `Offers::couponFromRequest($request, $offer)` returns the live coupon or `null`, and logs why an
 expired, exhausted, unknown or foreign code was ignored instead of failing the page.
 
+A redemption is counted in `Basket::discount()`, at the moment the basket becomes a payment, so two
+people cannot both get the last use. When the checkout then refuses (`Checkout::start()` returns
+`null`, for example over the buyer's country), call `$basket->releaseCoupon()`; it gives the
+redemption back once.
+
 ### Coupon duration and scope
 
 - **Applies to** (`duration`): the first payment (default, and what every coupon did before), the
@@ -338,6 +343,15 @@ brand of the pool, not the brand of the request that opened the page.
 **Money back, seats back.** A full refund or a chargeback (payments 1.23+) closes every pool of the
 payment: all seats are taken back, accepted ones lose their access, and the pool takes no further
 invitation or acceptance. A partial refund closes nothing; the buyer decides which seat goes.
+
+A seat is marked as taken back only **after** its access was revoked. If entitlements cannot be
+reached at that moment, the seat stays accepted, the log says so, and
+`php artisan offers:seats-reconcile` (safe to run as often as you like; exits non-zero while
+something is still open) catches up. Schedule it:
+
+```php
+Schedule::command('offers:seats-reconcile')->hourly();
+```
 
 In the Control Panel the offer panel lists the pools sold (buyer, seats given, closed or open), with
 **Resend link** (to the buyer's address only) and **Take back** per seat, which asks first for an

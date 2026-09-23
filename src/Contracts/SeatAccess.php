@@ -27,6 +27,14 @@ interface SeatAccess
      */
     public function grant(string $email, array $slugs, string $sourceRef, ?array $access = null): void;
 
-    /** @param  list<string>  $slugs */
-    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): void;
+    /**
+     * Den Zugang eines Platzes entziehen.
+     *
+     * **True nur, wenn danach nachweislich kein Zugang mehr besteht**: entzogen,
+     * oder es gab keinen. False, wenn der Entzug gescheitert ist; der Platz
+     * bleibt dann offen und wird spaeter nachgeholt (`offers:seats-reconcile`).
+     *
+     * @param  list<string>  $slugs
+     */
+    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): bool;
 }

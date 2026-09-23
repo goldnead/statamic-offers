@@ -79,6 +79,7 @@ class CouponDurationTest extends TestCase
             'currency' => null,
             'duration' => Coupon::DURATION_REPEATING,
             'cycles' => 3,
+            'floor_cent' => null,
         ], $terms);
         $this->assertSame(['coupon' => $terms], $basket->paymentMeta());
 
@@ -96,6 +97,44 @@ class CouponDurationTest extends TestCase
             'duration' => Coupon::DURATION_FOREVER, 'cycles' => null];
 
         $this->assertSame(2000, Offers::recurringDiscountCent($terms, 7, 2000));
+    }
+
+    #[Test]
+    public function a_chosen_amount_keeps_its_floor_on_every_following_payment(): void
+    {
+        Coupon::create(['code' => 'IMMER', 'percent' => 50, 'active' => true, 'duration' => Coupon::DURATION_FOREVER]);
+        $abo = $this->abo(['amount_cent' => null, 'price_mode' => Offer::PRICE_PWYW, 'pwyw_min_cent' => 1000, 'pwyw_suggested_cent' => 1500]);
+
+        $terms = Basket::make($abo, [], 'IMMER', amountCent: 1500)->couponTerms();
+
+        // Der Mindestpreis reist mit, weil payments ihn sonst nicht kennt.
+        $this->assertSame(1000, $terms['floor_cent']);
+        // 50 % von 15,00 waeren 7,50; der Boden laesst 5,00 zu, jeden Monat.
+        $this->assertSame(500, Offers::recurringDiscountCent($terms, 2, 1500));
+        $this->assertSame(500, Offers::recurringDiscountCent($terms, 12, 1500));
+    }
+
+    #[Test]
+    public function a_released_basket_gives_the_redemption_back_once(): void
+    {
+        $main = $this->abo(['interval' => null]);
+        Coupon::create(['code' => 'EINMAL', 'percent' => 10, 'active' => true, 'max_uses' => 1]);
+
+        $basket = Basket::make($main, [], 'EINMAL');
+        $this->assertNotNull($basket->discount());
+        $this->assertSame(1, Coupon::findByCode('EINMAL')->used_count);
+
+        // Die Kasse hat abgelehnt (zum Beispiel das Land). Der Code ist
+        // wieder frei, und zweimal freigeben gibt nicht zwei Einloesungen zurueck.
+        $basket->releaseCoupon();
+        $basket->releaseCoupon();
+        $this->assertSame(0, Coupon::findByCode('EINMAL')->used_count);
+
+        $this->assertNotNull(Basket::make($main, [], 'EINMAL')->discount());
+
+        // Ein Korb, der nichts eingeloest hat, gibt auch nichts zurueck.
+        Basket::make($main, [], 'EINMAL')->releaseCoupon();
+        $this->assertSame(1, Coupon::findByCode('EINMAL')->used_count);
     }
 
     #[Test]

@@ -388,4 +388,11 @@ return [
     'seat_pools_claimed' => 'Accepted',
     'seat_pools_invited' => 'Invited',
     'money_preview' => 'Equals :amount',
+
+    // Round 3
+    'seats_status_revoked' => 'Taken back',
+    'seat_pools_closed_at' => 'Closed on :date',
+    'seat_pools_payment' => 'Payment :id',
+    'field_seats_grant_nothing' => 'The product of this offer grants no access. Seats could be accepted but would give access to nothing. Add an access (grants) to the product.',
+    'unit_cent' => 'cents',
 ];

@@ -136,6 +136,18 @@ function money(cent) {
     }
 }
 
+/**
+ * Plaetze fuer Produkte, die keinen Zugang vergeben. Aus der Produktliste
+ * abgelesen, damit die Warnung auch vor dem ersten Speichern steht.
+ */
+const seatsGrantNothing = computed(() => {
+    if (!(Number(form.value.seats) >= 2)) return false;
+
+    const handles = [form.value.product, ...(form.value.products ?? [])].filter(Boolean);
+
+    return handles.length > 0 && handles.every((h) => !props.products.find((p) => p.value === h)?.grants);
+});
+
 /** Die verkauften Kontingente des gerade bearbeiteten Angebots. */
 const seatPools = computed(() => editing.value?.seat_pools ?? []);
 
@@ -620,9 +632,10 @@ const statusColor = (row) => {
                                 :model-value="form.pwyw_min_cent"
                                 type="number"
                                 min="0"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 @update:model-value="form.pwyw_min_cent = $event === '' ? null : Number($event)"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.pwyw_min_cent) }}</p>
                         </Field>
 
                         <Field :label="t.field_pwyw_suggested" :error="errors.pwyw_suggested_cent">
@@ -630,9 +643,10 @@ const statusColor = (row) => {
                                 :model-value="form.pwyw_suggested_cent"
                                 type="number"
                                 min="0"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 @update:model-value="form.pwyw_suggested_cent = $event === '' ? null : Number($event)"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.pwyw_suggested_cent) }}</p>
                         </Field>
 
                         <Field :label="t.field_pwyw_max" :error="errors.pwyw_max_cent">
@@ -640,16 +654,14 @@ const statusColor = (row) => {
                                 :model-value="form.pwyw_max_cent"
                                 type="number"
                                 min="1"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 @update:model-value="form.pwyw_max_cent = $event === '' ? null : Number($event)"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.pwyw_max_cent) }}</p>
                         </Field>
                     </div>
 
-                    <p class="mt-2 text-xs tabular-nums text-gray-500 dark:text-gray-400">
-                        {{ [money(form.pwyw_min_cent), money(form.pwyw_suggested_cent), money(form.pwyw_max_cent)].filter(Boolean).join(' · ') }}
-                    </p>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_help }}</p>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_pwyw_help }}</p>
                 </div>
 
                 <div v-if="isPwyw">
@@ -662,15 +674,16 @@ const statusColor = (row) => {
                         :key="index"
                         class="mt-3 rounded-md border border-gray-300 p-3 dark:border-gray-700"
                     >
-                        <div class="flex items-end gap-4">
+                        <div class="flex items-start gap-4">
                             <Field class="w-40 shrink-0" :label="t.field_pwyw_thanks_from" :error="thanksError(index, 'from_cent')">
                                 <Input
                                     :model-value="tier.from_cent"
                                     type="number"
                                     min="0"
-                                    :append="currency"
+                                    :append="t.unit_cent"
                                     @update:model-value="tier.from_cent = $event === '' ? null : Number($event)"
                                 />
+                                <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(tier.from_cent) }}</p>
                             </Field>
 
                             <Button
@@ -697,13 +710,15 @@ const statusColor = (row) => {
                                 :model-value="form.amount_cent"
                                 type="number"
                                 min="1"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 @update:model-value="amountChanged($event === '' ? null : Number($event))"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.amount_cent) }}</p>
                         </Field>
 
                         <Field :label="t.field_compare_at" :error="errors.compare_at_cent">
-                            <Input v-model.number="form.compare_at_cent" type="number" min="1" :append="currency" />
+                            <Input v-model.number="form.compare_at_cent" type="number" min="1" :append="t.unit_cent" />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.compare_at_cent) }}</p>
                         </Field>
                     </div>
 
@@ -762,10 +777,11 @@ const statusColor = (row) => {
                                 :model-value="form.trial_amount_cent"
                                 type="number"
                                 min="0"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 :disabled="!form.interval"
                                 @update:model-value="form.trial_amount_cent = $event === '' ? null : Number($event)"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.trial_amount_cent) }}</p>
                         </Field>
                     </div>
 
@@ -783,10 +799,11 @@ const statusColor = (row) => {
                                 :model-value="form.setup_fee_cent"
                                 type="number"
                                 min="1"
-                                :append="currency"
+                                :append="t.unit_cent"
                                 :disabled="!hasPlan && !form.setup_fee_cent"
                                 @update:model-value="form.setup_fee_cent = $event === '' ? null : Number($event)"
                             />
+                            <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.setup_fee_cent) }}</p>
                         </Field>
 
                         <Field :label="t.field_setup_fee_label" :error="errors.setup_fee_label">
@@ -798,8 +815,7 @@ const statusColor = (row) => {
                         </Field>
                     </div>
 
-                    <p v-if="form.setup_fee_cent" class="mt-2 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(form.setup_fee_cent) }}</p>
-                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t.field_setup_fee_help }}</p>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t.field_setup_fee_help }}</p>
                 </div>
 
                 <!-- Mehrere Zahlweisen an einem Angebot. Steht unter dem
@@ -850,9 +866,10 @@ const statusColor = (row) => {
                                     :model-value="option.amount_cent"
                                     type="number"
                                     min="1"
-                                    :append="currency"
+                                    :append="t.unit_cent"
                                     @update:model-value="option.amount_cent = $event === '' ? null : Number($event)"
                                 />
+                                <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(option.amount_cent) }}</p>
                             </Field>
 
                             <Field :label="t.field_interval" :error="optionError(index, 'interval')">
@@ -894,10 +911,11 @@ const statusColor = (row) => {
                                     :model-value="option.trial_amount_cent"
                                     type="number"
                                     min="0"
-                                    :append="currency"
+                                    :append="t.unit_cent"
                                     :disabled="!option.interval"
                                     @update:model-value="option.trial_amount_cent = $event === '' ? null : Number($event)"
                                 />
+                                <p class="mt-1 text-xs tabular-nums text-gray-500 dark:text-gray-400">{{ money(option.trial_amount_cent) }}</p>
                             </Field>
                         </div>
                     </div>
@@ -1098,6 +1116,8 @@ const statusColor = (row) => {
                     />
                 </Field>
 
+                <Alert v-if="seatsGrantNothing" variant="warning" :text="t.field_seats_grant_nothing" />
+
                 <!-- Was schon verkauft ist. Je Kauf die Kaeuferin, wie viele
                      Plaetze vergeben sind, und die Plaetze selbst. -->
                 <div v-if="editing && (form.seats || seatPools.length)">
@@ -1111,15 +1131,23 @@ const statusColor = (row) => {
                         class="mt-3 rounded-md border border-gray-300 p-3 dark:border-gray-700"
                     >
                         <div class="flex flex-wrap items-center gap-2">
+                            <!-- Umbrechen statt abschneiden: im schmalen Stapel
+                                 blieb von einer Adresse sonst nur der Anfang. -->
                             <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-medium">{{ pool.owner_name || pool.owner_email }}</p>
-                                <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                                    {{ pool.owner_name ? pool.owner_email + ' · ' : '' }}{{ pool.created_at }}
-                                </p>
+                                <p class="text-sm font-medium wrap-anywhere">{{ pool.owner_name || pool.owner_email }}</p>
+                                <p v-if="pool.owner_name" class="text-xs text-gray-500 wrap-anywhere dark:text-gray-400">{{ pool.owner_email }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">{{ pool.created_at }}</p>
                             </div>
                             <Badge v-if="pool.closed" color="red" pill :text="t.seat_pools_closed" />
                             <Badge v-else pill :text="t.seat_pools_taken.replace(':taken', pool.taken).replace(':seats', pool.seats)" />
                         </div>
+
+                        <!-- Geschlossen: wann, warum, welche Zahlung. -->
+                        <p v-if="pool.closed" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            {{ t.seat_pools_closed_at.replace(':date', pool.closed_at) }}
+                            · {{ pool.closed_reason }}
+                            · {{ t.seat_pools_payment.replace(':id', pool.payment_id) }}
+                        </p>
 
                         <div class="mt-2 flex flex-wrap gap-2">
                             <Button size="sm" icon="mail" :text="t.seat_pools_resend" :disabled="pool.closed" @click="postSeat(pool.resend_url)" />
@@ -1128,7 +1156,10 @@ const statusColor = (row) => {
 
                         <ul v-if="pool.rows.length" class="mt-3 divide-y divide-gray-200 border-t border-gray-200 text-sm dark:divide-gray-700 dark:border-gray-700">
                             <li v-for="row in pool.rows" :key="row.id" class="flex items-center gap-2 py-2">
-                                <span class="min-w-0 flex-1 truncate">{{ row.name ? row.name + ' · ' : '' }}{{ row.email }}</span>
+                                <span class="min-w-0 flex-1">
+                                    <span v-if="row.name" class="block">{{ row.name }}</span>
+                                    <span class="block text-xs text-gray-500 wrap-anywhere dark:text-gray-400">{{ row.email }}</span>
+                                </span>
                                 <Badge pill :color="row.claimed ? 'green' : 'default'" :text="row.claimed ? t.seat_pools_claimed : t.seat_pools_invited" />
                                 <Button size="xs" variant="ghost" :text="t.seat_pools_revoke" @click="takeBack(row)" />
                             </li>

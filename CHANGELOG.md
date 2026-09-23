@@ -64,6 +64,19 @@ by email, takes seats back and gives them again; access is granted on acceptance
 - The name on an invitation is limited to letters, spaces, `-`, `.`, `'` and 80 characters: it is
   the greeting of a mail sent under this site's sender.
 
+### Round three
+
+- A seat is marked as taken back only after its access was revoked; `SeatAccess::revoke()` now
+  returns whether it did. A failed revocation leaves the seat open and logged, a redelivered event
+  retries, and `offers:seats-reconcile` catches up on closed pools.
+- The closed buyer page shows what was taken back and nothing to hand out. The CP card of a closed
+  pool shows date, reason and payment number; long names and addresses wrap instead of being cut.
+- Seats for products that grant nothing: a warning in the editor and a log line when sold.
+- `Basket::releaseCoupon()` gives a redemption back when the checkout refuses after `discount()`.
+- The floor of a chosen amount travels to the renewals (`floor_cent` in the coupon terms), and
+  `Offers::recurringDiscountCent()` respects it.
+- Every money field in the offer editor says "Cent" and shows the amount it stands for below.
+
 ### Pay what you want, round two (O1)
 
 - The minimum is a floor after a coupon too.

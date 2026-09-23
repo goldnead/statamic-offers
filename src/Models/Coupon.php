@@ -307,6 +307,19 @@ class Coupon extends Model
      * caller then charges full price rather than failing the purchase — a sale
      * lost to a race is worse than a discount missed.
      */
+    /**
+     * Eine Einloesung zurueckgeben. Nie unter null: ein doppelter Aufruf
+     * irgendwo darf den Zaehler nicht ins Negative und damit ueber `max_uses`
+     * hinaus oeffnen.
+     */
+    public function release(): void
+    {
+        static::query()
+            ->whereKey($this->getKey())
+            ->where('used_count', '>', 0)
+            ->update(['used_count' => DB::raw('used_count - 1')]);
+    }
+
     public function claim(): bool
     {
         if ($this->max_uses === null) {

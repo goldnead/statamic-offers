@@ -124,6 +124,9 @@ class Basket
         public readonly ?int $chosenAmountCent = null,
     ) {}
 
+    /** Der Gutschein, den `discount()` eingeloest hat, bis er freigegeben wird. */
+    protected ?Coupon $claimed = null;
+
     /**
      * Only bumps this offer actually lists, and only ones that can be sold.
      *
@@ -306,7 +309,27 @@ class Basket
             return null;
         }
 
+        $this->claimed = $coupon;
+
         return new Discount($coupon->code, $off, $coupon->name);
+    }
+
+    /**
+     * Die Einloesung zuruecknehmen, wenn aus dem Korb doch keine Zahlung wurde.
+     *
+     * `discount()` zaehlt die Einloesung sofort, und das bleibt so: nur ein
+     * bedingtes UPDATE im Moment des Einloesens verhindert, dass zwei Leute den
+     * letzten Code gleichzeitig bekommen. Lehnt die Kasse danach ab (das Land,
+     * ein Anbieterfehler, `Checkout::start()` gibt null), ruft die aufrufende
+     * Strecke das hier. Einmal: ein zweiter Aufruf und ein Korb ohne Einloesung
+     * tun nichts.
+     */
+    public function releaseCoupon(): void
+    {
+        $coupon = $this->claimed;
+        $this->claimed = null;
+
+        $coupon?->release();
     }
 
     public function netCent(): int
@@ -348,7 +371,7 @@ class Basket
      * laenger als die erste Zahlung gilt. Die Form ist die, die
      * {@see Offers::recurringDiscountCent()} liest.
      *
-     * @return array{code: string, percent: int|null, amount_cent: int|null, currency: string|null, duration: string, cycles: int|null}|null
+     * @return array{code: string, percent: int|null, amount_cent: int|null, currency: string|null, duration: string, cycles: int|null, floor_cent: int|null}|null
      */
     public function couponTerms(): ?array
     {
@@ -362,7 +385,12 @@ class Basket
             return null;
         }
 
-        return $coupon->terms();
+        // Der Boden reist mit. payments kennt den Mindestpreis eines frei
+        // gewaehlten Betrags nicht, und ohne ihn braechte ein Gutschein fuer
+        // immer jede Folgezahlung unter das, was das Angebot zulaesst.
+        return $coupon->terms() + [
+            'floor_cent' => $this->chosenAmountCent !== null ? $this->offer->pwywMinCent() : null,
+        ];
     }
 
     /**

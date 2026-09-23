@@ -96,6 +96,17 @@ class SeatPools
 
             $neu[] = $pool;
 
+            // Plaetze fuer etwas, das keinen Zugang vergibt, sind Einladungen
+            // ins Leere: angenommen, und niemand kommt irgendwo hinein. Das
+            // Kontingent entsteht trotzdem (bezahlt ist bezahlt), aber laut.
+            if ($pool->grantList() === []) {
+                Log::warning('statamic-offers: seats were sold for an offer whose products grant nothing; accepted seats will give no access.', [
+                    'payment_id' => $payment->getKey(),
+                    'offer' => $teile->offer,
+                    'pool_id' => $pool->getKey(),
+                ]);
+            }
+
             $this->mail(fn () => Mail::to($email)->send(new SeatPoolMail($pool)), $pool->id, 'pool');
         }
 
@@ -192,6 +203,12 @@ class SeatPools
      * „eingeladen", der Platz war inzwischen angenommen, und entzogen wurde
      * nichts. Jetzt gewinnt das UPDATE nur, wenn der Stand noch derselbe ist;
      * sonst wird neu gelesen.
+     *
+     * **Erst entziehen, dann als zurueckgeholt markieren.** Umgekehrt stand ein
+     * Platz, dessen Entzug gescheitert war, als „zurueckgeholt" da und gab weiter
+     * Zugang, und nichts holte es je nach. Jetzt bleibt er angenommen, das Log
+     * sagt warum, und `offers:seats-reconcile` versucht es wieder. Ein doppelter
+     * Entzug schadet nicht: entitlements entzieht nur, was noch besteht.
      */
     public function revoke(Seat $seat, ?string $reason = null): bool
     {
@@ -202,38 +219,84 @@ class SeatPools
                 return false;
             }
 
-            $gewonnen = Seat::query()
-                ->whereKey($seat->getKey())
-                ->where('status', $vorher)
-                ->update(['status' => Seat::STATUS_REVOKED, 'revoked_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
-
-            if ($gewonnen === 0) {
-                continue;
-            }
-
             if ($vorher === Seat::STATUS_CLAIMED) {
                 $pool = $seat->pool;
 
-                $this->inBrandOf($pool, fn () => $this->access->revoke(
+                $entzogen = $this->inBrandOf($pool, fn () => $this->access->revoke(
                     $seat->email,
                     $pool->grantList(),
                     $seat->sourceRef(),
                     $reason ?? 'Platz von der Käuferin zurückgeholt (Kontingent '.$seat->pool_id.')',
                 ));
+
+                if ($entzogen !== true) {
+                    Log::warning('statamic-offers: a seat stays open because its access could not be revoked.', [
+                        'seat_id' => $seat->getKey(),
+                        'pool_id' => $seat->pool_id,
+                    ]);
+
+                    return false;
+                }
             }
 
-            return true;
+            $gewonnen = Seat::query()
+                ->whereKey($seat->getKey())
+                ->where('status', $vorher)
+                ->update(['status' => Seat::STATUS_REVOKED, 'revoked_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
+
+            if ($gewonnen > 0) {
+                return true;
+            }
         }
 
         return false;
     }
 
     /**
+     * Offene Plaetze geschlossener Kontingente nachholen.
+     *
+     * Fuer `offers:seats-reconcile`: ein Entzug, der bei der Erstattung
+     * scheiterte (entitlements gerade weg, Datenbank kurz nicht erreichbar),
+     * wird hier wiederholt. Eine erneute Zustellung des Ereignisses tut dasselbe
+     * ueber {@see self::close()}; auf die allein ist kein Verlass, weil payments
+     * eine schon gebuchte Erstattung nicht erneut meldet.
+     *
+     * @return array{closed_pools: int, revoked: int, still_open: int}
+     */
+    public function reconcile(): array
+    {
+        $ergebnis = ['closed_pools' => 0, 'revoked' => 0, 'still_open' => 0];
+
+        $pools = SeatPool::query()
+            ->whereNotNull('closed_at')
+            ->whereHas('seatRows', fn ($q) => $q->where('status', '!=', Seat::STATUS_REVOKED))
+            ->get();
+
+        foreach ($pools as $pool) {
+            $ergebnis['closed_pools']++;
+            $grund = $pool->closed_reason ?: 'Kontingent geschlossen';
+
+            foreach ($pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED)->get() as $seat) {
+                $this->revoke($seat, $grund) ? $ergebnis['revoked']++ : $ergebnis['still_open']++;
+            }
+        }
+
+        return $ergebnis;
+    }
+
+    /**
      * Das Kontingent schliessen: volle Erstattung oder Rueckbuchung.
      *
      * Jeder Platz wird zurueckgeholt, angenommene mit Entzug des Zugangs. Ein
-     * bedingtes UPDATE auf `closed_at`, damit zwei Zustellungen desselben
-     * Ereignisses nur einmal schliessen.
+     * bedingtes UPDATE auf `closed_at`, damit Datum und Grund der ersten
+     * Meldung stehen bleiben.
+     *
+     * **Die Plaetze werden auch bei einer zweiten Zustellung durchgegangen.**
+     * Frueher brach der Aufruf ab, sobald das Kontingent schon geschlossen war,
+     * und ein Platz, dessen Entzug beim ersten Mal scheiterte, blieb fuer immer
+     * offen.
+     *
+     * @return bool ob das Kontingent mit diesem Aufruf geschlossen wurde
      */
     public function close(SeatPool $pool, string $reason): bool
     {
@@ -242,15 +305,11 @@ class SeatPools
             ->whereNull('closed_at')
             ->update(['closed_at' => Carbon::now(), 'closed_reason' => mb_substr($reason, 0, 191), 'updated_at' => Carbon::now()]);
 
-        if ($gewonnen === 0) {
-            return false;
-        }
-
         foreach ($pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED)->get() as $seat) {
             $this->revoke($seat, $reason);
         }
 
-        return true;
+        return $gewonnen > 0;
     }
 
     /**
@@ -292,15 +351,13 @@ class SeatPools
      * Null ist ein Betrieb ohne Mandanten; dort gibt es nichts umzustellen,
      * und `runFor(0)` kennte keine Marke.
      */
-    protected function inBrandOf(SeatPool $pool, callable $tun): void
+    protected function inBrandOf(SeatPool $pool, callable $tun): mixed
     {
         if ($pool->brand_id > 0 && app()->bound('brand-context')) {
-            app('brand-context')->runFor($pool->brand_id, fn () => $tun());
-
-            return;
+            return app('brand-context')->runFor($pool->brand_id, fn () => $tun());
         }
 
-        $tun();
+        return $tun();
     }
 
     /**

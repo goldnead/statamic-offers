@@ -27,7 +27,12 @@ class SeatsController extends Controller
     public function manage(string $token): View
     {
         $pool = $this->pool($token);
-        $seats = $pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED)->orderBy('id')->get();
+        // Geschlossen: alle Plaetze, auch die zurueckgeholten, damit die
+        // Kaeuferin sieht, wem der Zugang genommen wurde. Offen: nur, was belegt ist.
+        $seats = $pool->seatRows()
+            ->when(! $pool->isClosed(), fn ($q) => $q->where('status', '!=', Seat::STATUS_REVOKED))
+            ->orderBy('id')
+            ->get();
 
         return view('statamic-offers::seats.manage', [
             'pool' => $pool,

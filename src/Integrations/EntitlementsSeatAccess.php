@@ -77,10 +77,12 @@ class EntitlementsSeatAccess implements SeatAccess
         }
     }
 
-    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): void
+    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): bool
     {
+        // Ohne entitlements wurde nie ein Zugang vergeben (grant() tut dann
+        // nichts), also ist auch keiner mehr da.
         if (! $this->available()) {
-            return;
+            return true;
         }
 
         try {
@@ -88,18 +90,24 @@ class EntitlementsSeatAccess implements SeatAccess
                 ->where('source', self::SOURCE)
                 ->where('source_ref', $sourceRef)
                 ->whereIn('product_slug', $slugs)
+                ->whereNull('revoked_at')
                 ->get();
 
             foreach ($zugaenge as $zugang) {
                 (self::FACADE)::revoke($zugang, $reason);
             }
+
+            return true;
         } catch (Throwable $e) {
-            // Laut: ein Platz, der zurueckgeholt aussieht und noch Zugang gibt,
-            // ist genau der Fehler, den die Kaeuferin nicht sehen kann.
-            Log::error('statamic-offers: a seat was taken back, but its access could not be revoked.', [
+            // Laut, und als `false` an den Aufrufer: der Platz bleibt dann
+            // offen und wird nachgeholt, statt zurueckgeholt auszusehen und
+            // weiter Zugang zu geben.
+            Log::error('statamic-offers: a seat was taken back, but its access could not be revoked; it stays open until offers:seats-reconcile succeeds.', [
                 'source_ref' => $sourceRef,
                 'exception' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 

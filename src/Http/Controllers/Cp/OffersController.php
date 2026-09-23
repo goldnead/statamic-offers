@@ -1045,6 +1045,10 @@ class OffersController extends CpController
             'seat_pools_invited' => __('statamic-offers::messages.seat_pools_invited'),
             'seats_revoke_confirm' => __('statamic-offers::messages.seats_revoke_confirm', ['email' => ':email']),
             'money_preview' => __('statamic-offers::messages.money_preview', ['amount' => ':amount']),
+            'seat_pools_closed_at' => __('statamic-offers::messages.seat_pools_closed_at', ['date' => ':date']),
+            'seat_pools_payment' => __('statamic-offers::messages.seat_pools_payment', ['id' => ':id']),
+            'field_seats_grant_nothing' => __('statamic-offers::messages.field_seats_grant_nothing'),
+            'unit_cent' => __('statamic-offers::messages.unit_cent'),
             'locale' => str_replace('_', '-', (string) app()->getLocale()),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
@@ -1069,7 +1073,7 @@ class OffersController extends CpController
     }
 
     /**
-     * @return list<array<string, string>>
+     * @return array<int, array{value: string, label: mixed, grants: bool}>
      */
     protected function products(): array
     {
@@ -1077,6 +1081,9 @@ class OffersController extends CpController
             ->map(fn (array $product, string $handle) => [
                 'value' => $handle,
                 'label' => $product['name'] ?? $handle,
+                // Ob das Produkt einen Zugang vergibt. Das Formular warnt damit
+                // vor Plaetzen, die nirgends hineinfuehren.
+                'grants' => ! empty($product['grants']),
             ])
             ->values()
             ->all();

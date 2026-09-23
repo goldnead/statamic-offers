@@ -197,10 +197,15 @@ final class Offers
             return 0;
         }
 
+        // Bei „Zahl, was du willst" der Mindestpreis: auch eine Folgezahlung
+        // faellt nicht darunter, genau wie die erste im Korb.
+        $boden = $terms['floor_cent'] ?? null;
+        $hoechstens = is_int($boden) && $boden > 0 ? max(0, $amountCent - $boden) : $amountCent;
+
         $prozent = $terms['percent'] ?? null;
 
         if (is_int($prozent) && $prozent > 0) {
-            return min($amountCent, (int) round($amountCent * min($prozent, 100) / 100));
+            return min($hoechstens, (int) round($amountCent * min($prozent, 100) / 100));
         }
 
         $fest = $terms['amount_cent'] ?? null;
@@ -217,7 +222,7 @@ final class Offers
             return 0;
         }
 
-        return min($amountCent, $fest);
+        return min($hoechstens, $fest);
     }
 
     /** Der Pfad vor dem Slug eines Kurzlinks, ohne Schraegstriche. */

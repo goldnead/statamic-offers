@@ -16,6 +16,7 @@ use Goldnead\StatamicPayments\Support\Chargebacks;
 use Goldnead\StatamicPayments\Support\Checkout;
 use Goldnead\StatamicPayments\Support\Fulfilment;
 use Goldnead\StatamicPayments\Support\Refunds;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Role;
@@ -396,6 +397,80 @@ class SeatsTest extends TestCase
     }
 
     #[Test]
+    public function a_failed_revocation_keeps_the_seat_open_and_the_reconcile_command_catches_up(): void
+    {
+        [$payment, $pool, $angenommen] = $this->poolWithOneAccepted();
+
+        // entitlements antwortet gerade nicht.
+        $this->access->failRevoke = true;
+        app(Refunds::class)->record($payment->fresh(), $payment->amount_cent, 're_1');
+
+        // Geschlossen ja, aber der angenommene Platz steht nicht als
+        // zurueckgeholt da, solange sein Zugang nicht nachweislich weg ist.
+        $this->assertNotNull($pool->fresh()->closed_at);
+        $this->assertSame(Seat::STATUS_CLAIMED, $angenommen->fresh()->status);
+        $this->assertSame(Seat::STATUS_REVOKED, Seat::query()->where('email', 'alt@chor.example')->value('status'));
+
+        // Der Befehl holt nach, sobald entitlements wieder antwortet.
+        $this->access->failRevoke = false;
+        $this->artisan('offers:seats-reconcile')->assertSuccessful();
+
+        $this->assertSame(Seat::STATUS_REVOKED, $angenommen->fresh()->status);
+        $this->assertSame([['sopran@chor.example', ['workshop-zugang'], 'seat:'.$angenommen->id]], $this->access->revoked);
+
+        // Ein zweiter Lauf findet nichts mehr.
+        $this->artisan('offers:seats-reconcile')->assertSuccessful();
+        $this->assertCount(1, $this->access->revoked);
+    }
+
+    #[Test]
+    public function the_closed_page_shows_what_was_taken_back_and_nothing_to_hand_out(): void
+    {
+        [$payment, $pool] = $this->poolWithOneAccepted();
+        app(Refunds::class)->record($payment->fresh(), $payment->amount_cent, 're_1');
+
+        $this->get(route('statamic-offers.seats.manage', $pool->manage_token))
+            ->assertOk()
+            ->assertSee('sopran@chor.example')
+            ->assertSee(__('statamic-offers::messages.seats_status_revoked'))
+            ->assertDontSee('0 / 10')
+            ->assertDontSee(__('statamic-offers::messages.seats_manage_foot'));
+    }
+
+    #[Test]
+    public function the_control_panel_says_when_and_why_a_pool_was_closed(): void
+    {
+        [$payment, $pool] = $this->poolWithOneAccepted();
+        app(Refunds::class)->record($payment->fresh(), $payment->amount_cent, 're_1');
+        $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
+
+        $karte = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))
+            ->firstWhere('handle', 'stimmgruppe')['seat_pools'][0];
+
+        $this->assertTrue($karte['closed']);
+        $this->assertNotNull($karte['closed_at']);
+        $this->assertStringContainsString((string) $payment->id, $karte['closed_reason']);
+        $this->assertSame($payment->id, $karte['payment_id']);
+    }
+
+    #[Test]
+    public function seats_for_a_product_that_grants_nothing_are_flagged_and_logged(): void
+    {
+        config(['statamic-payments.products.ohne' => ['name' => 'Ohne Zugang', 'amount_cent' => 1000]]);
+        $this->offer(['handle' => 'leer', 'product' => 'ohne']);
+        $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
+
+        $zeile = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))->firstWhere('handle', 'leer');
+        $this->assertTrue($zeile['seats_grant_nothing']);
+
+        Log::spy();
+        $this->buy('offer:leer');
+        $this->assertSame(1, SeatPool::query()->where('offer', 'leer')->count());
+
+        Log::shouldHaveReceived('warning')->withArgs(fn ($m) => str_contains($m, 'grant nothing'))->once();
+    }
+
+    #[Test]
     public function seats_are_not_sold_as_a_subscription(): void
     {
         $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
@@ -429,8 +504,17 @@ class FakeSeatAccess implements SeatAccess
         $this->granted[] = [$email, $slugs, $sourceRef];
     }
 
-    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): void
+    /** Laesst den Entzug scheitern, wie ein entitlements, das gerade nicht antwortet. */
+    public bool $failRevoke = false;
+
+    public function revoke(string $email, array $slugs, string $sourceRef, string $reason): bool
     {
+        if ($this->failRevoke) {
+            return false;
+        }
+
         $this->revoked[] = [$email, $slugs, $sourceRef];
+
+        return true;
     }
 }

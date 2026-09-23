@@ -8,6 +8,7 @@ use Goldnead\StatamicOffers\Models\SeatPool;
 use Goldnead\StatamicOffers\Support\CpNumber;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Support\OfferUsage;
+use Goldnead\StatamicOffers\Support\SeatPools;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
@@ -51,6 +52,9 @@ class ListedOffer extends JsonResource
             // ein Angebot mit tausend Gruppenkaeufen gehoert in einen eigenen
             // Bildschirm, nicht in eine Zeile der Liste.
             'seat_pools' => $this->seatPools(),
+            // Plaetze fuer ein Produkt ohne Zugang: angenommen, und niemand
+            // kommt irgendwo hinein. Das Formular sagt es, bevor verkauft wird.
+            'seats_grant_nothing' => $this->resource->seatCount() !== null && SeatPools::grantsOf($this->resource) === [],
             'currency' => $this->currency(),
             'compare_at' => $this->money($this->effectiveCompareAtCent()),
             'own_price' => $this->amount_cent !== null,
@@ -189,6 +193,9 @@ class ListedOffer extends JsonResource
                 'seats' => $pool->seats,
                 'taken' => $pool->seatRows->count(),
                 'closed' => $pool->isClosed(),
+                'closed_at' => $pool->closed_at?->locale(app()->getLocale())->isoFormat('L LT'),
+                'closed_reason' => $pool->closed_reason,
+                'payment_id' => $pool->payment_id,
                 'created_at' => $pool->created_at?->locale(app()->getLocale())->isoFormat('L'),
                 'manage_url' => route('statamic-offers.seats.manage', $pool->manage_token),
                 'resend_url' => cp_route('utilities.offers.seats.resend', $pool->id),
