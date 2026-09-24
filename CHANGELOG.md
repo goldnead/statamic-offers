@@ -1,12 +1,15 @@
 # Changelog
 
-## Unreleased (1.13.0)
+## 1.13.0 — 2026-09-24
 
 ### Upgrading
 
-- Run `php artisan migrate`: one migration adds `sold_out_at` and `link_switched_at` to `offers`
-  and the table `offer_coupon_redemptions`. Until then purchases and short links work as before;
-  only the new moments are skipped.
+- **Run `php artisan migrate`**: one migration adds the columns `sold_out_at` and
+  `link_switched_at` to `offers` and the table `offer_coupon_redemptions`. Until then purchases
+  and short links work as before; only the new moments are skipped.
+- **With statamic-webhook-manager 2.10 the offer events appear there as triggers.** Nothing to do
+  if you want that. To switch it off, set `statamic-offers.webhook_manager.enabled` to `false`
+  (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`). Without the webhook manager nothing changes.
 
 ### Added
 
@@ -25,7 +28,8 @@
   redelivered "paid" is recognisable), and `occurred_at` is the time of the moment. Sent after the
   transaction commits, never after a rollback; an event whose brand does not exist sends nothing
   instead of reaching the current brand's hooks.
-- Config `webhook_manager.enabled` (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`, default `true`).
+- Config `statamic-offers.webhook_manager.enabled` (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`,
+  default `true`).
 
 ## 1.12.0 — 2026-09-23
 
