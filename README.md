@@ -392,8 +392,15 @@ every event above is a trigger (source type `offers`). Without it nothing is loa
 `webhook_manager.enabled` (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`, default `true`) switches the
 bridge off. A hook fires in the event's brand.
 
-Every payload starts with the frame the suite addons share: `event` (the handle), `occurred_at`
-(ISO 8601 with offset), `brand` (`{id, handle}` or `null`), `subject_type` and `subject_id` (the
+An event whose brand no longer exists sends nothing (logged), rather than reaching the hooks of
+whichever brand is current. A moment is sent after its database transaction commits, and not at all
+if it is rolled back. **Order is not guaranteed** (retries, queues): sort by `occurred_at` and
+deduplicate on `event_id`.
+
+Every payload starts with the frame the suite addons share: `event` (the handle), `event_id`
+(`<handle>:<subject_id>:<time of the moment>`, for a coupon `…:payment-<id>`, the same for the same
+moment however often it is sent, a redelivered payment included), `occurred_at` (when the moment
+happened, ISO 8601 with offset), `brand` (`{id, handle}` or `null`), `subject_type` and `subject_id` (the
 seat for seat events, `seat_pool` for the pool events, the coupon, else the offer).
 **Never a token**: neither a seat's nor the pool's `manage_token`, since each opens a seat page as
 that person.

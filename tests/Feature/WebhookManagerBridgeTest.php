@@ -4,7 +4,9 @@ namespace Goldnead\StatamicOffers\Tests\Feature;
 
 use Goldnead\BrandContext\Models\Brand;
 use Goldnead\StatamicOffers\Contracts\SeatAccess;
+use Goldnead\StatamicOffers\Events\CouponRedeemed;
 use Goldnead\StatamicOffers\Events\OfferSoldOut;
+use Goldnead\StatamicOffers\Events\SeatAccepted;
 use Goldnead\StatamicOffers\Integrations\WebhookManager\OffersTrigger;
 use Goldnead\StatamicOffers\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\StatamicOffers\Models\Coupon;
@@ -24,6 +26,7 @@ use Goldnead\WebhookManager\ValueObjects\TriggerEvent;
 use Goldnead\WebhookManager\WebhookManagerServiceProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -172,7 +175,7 @@ class WebhookManagerBridgeTest extends TestCase
         $accepted = $events['offers.seat_accepted'][0];
         $this->assertSame('offers', $accepted->sourceType);
         $this->assertSame((string) $seat->id, $accepted->sourceReference);
-        $this->assertSame(['event', 'occurred_at', 'brand', 'subject_type', 'subject_id', 'offer', 'pool', 'seat'], array_keys($accepted->payload));
+        $this->assertSame(['event', 'event_id', 'occurred_at', 'brand', 'subject_type', 'subject_id', 'offer', 'pool', 'seat'], array_keys($accepted->payload));
         $this->assertSame(['seat', $seat->id], [$accepted->payload['subject_type'], $accepted->payload['subject_id']]);
         $this->assertSame(['seat_pool', $pool->id], [$events['offers.seat_pool_opened'][0]->payload['subject_type'], $events['offers.seat_pool_opened'][0]->payload['subject_id']]);
         $this->assertSame(['id' => $pool->offerModel()->id, 'handle' => 'stimmgruppe', 'name' => 'Workshop für die Stimmgruppe'], $accepted->payload['offer']);
@@ -267,6 +270,77 @@ class WebhookManagerBridgeTest extends TestCase
         $delivery = DB::table('webhook_deliveries')->sole();
         $this->assertSame($akademie->id, (int) $delivery->brand_id);
         $this->assertSame(['id' => $akademie->id, 'handle' => 'akademie'], json_decode((string) $delivery->request_body, true)['payload']['brand']);
+    }
+
+    #[Test]
+    public function the_same_moment_keeps_its_event_id_and_its_own_time_on_every_delivery(): void
+    {
+        $this->offer(['seats' => 3]);
+        Coupon::create(['code' => 'CHOR20', 'percent' => 20, 'active' => true]);
+        Event::fake([TriggerDetected::class]);
+
+        $payment = $this->buy(new Discount('CHOR20', 7800));
+        $seats = app(SeatPools::class);
+        $seat = $seats->invite(SeatPool::query()->sole(), 'sopran@chor.example');
+        $seats->accept($seat);
+        $seat->refresh();
+        $coupon = Coupon::query()->sole();
+
+        $this->travel(5)->minutes();
+
+        // A redelivered "paid" is the same redemption: same id.
+        $again = WebhookManager::triggers()->get('offers.coupon_redeemed')->build(new CouponRedeemed($coupon, $payment));
+        $first = $this->detected()['offers.coupon_redeemed'][0];
+        $this->assertSame($first->payload['event_id'], $again->payload['event_id']);
+        $this->assertSame('offers.coupon_redeemed:'.$coupon->id.':payment-'.$payment->id, $again->payload['event_id']);
+        $this->assertSame($payment->paid_at->format(\DATE_ATOM), $again->eventAt->format(\DATE_ATOM));
+
+        $accepted = $this->detected()['offers.seat_accepted'][0];
+        $this->assertSame('offers.seat_accepted:'.$seat->id.':'.$seat->claimed_at->format(\DATE_ATOM), $accepted->payload['event_id']);
+        $this->assertSame($seat->claimed_at->format(\DATE_ATOM), $accepted->payload['occurred_at']);
+        $this->assertSame(
+            $accepted->payload['event_id'],
+            WebhookManager::triggers()->get('offers.seat_accepted')->build(new SeatAccepted($seat, $seat->pool))->payload['event_id'],
+        );
+    }
+
+    #[Test]
+    public function a_moment_whose_brand_does_not_exist_goes_to_nobody(): void
+    {
+        Queue::fake();
+        Log::spy();
+        $this->hook('offers.sold_out', 'aktuell');
+        $offer = $this->offer(['quantity_limit' => 1]);
+        $offer->forceFill(['brand_id' => 999])->save();
+
+        OfferSoldOut::dispatch($offer, 1);
+
+        $this->assertSame(0, DB::table('webhook_deliveries')->count());
+        Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains($message, 'brand [999] does not exist'));
+    }
+
+    #[Test]
+    public function a_moment_is_sent_after_its_commit_and_never_after_a_rollback(): void
+    {
+        $offer = $this->offer(['quantity_limit' => 1]);
+        Event::fake([TriggerDetected::class]);
+
+        try {
+            DB::transaction(function () use ($offer) {
+                OfferSoldOut::dispatch($offer, 1);
+                throw new \RuntimeException('rollback');
+            });
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame([], $this->detected());
+
+        DB::transaction(function () use ($offer) {
+            OfferSoldOut::dispatch($offer, 1);
+            $this->assertSame([], $this->detected());
+        });
+
+        $this->assertArrayHasKey('offers.sold_out', $this->detected());
     }
 
     #[Test]

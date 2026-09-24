@@ -44,10 +44,17 @@ final class WebhookPayload
     {
         $brandId = $event->brandId ?? null;
         [$type, $id] = self::subjectOf($event);
+        [$key, $at] = self::moment($event);
+        $at ??= now();
 
         return [
             'event' => $handle,
-            'occurred_at' => now()->format(\DATE_ATOM),
+            // The same moment always gets the same id, however often it is
+            // sent: `<handle>:<subject_id>:<key>`, formed as in the payments
+            // addon. A coupon is keyed by the payment, so a redelivered "paid"
+            // is recognisable as the same redemption.
+            'event_id' => $handle.':'.$id.':'.$key,
+            'occurred_at' => $at->format(\DATE_ATOM),
             // The event's brand; on a site without brands the one current,
             // as the other suite addons send it.
             'brand' => self::brand(is_int($brandId) ? $brandId : self::currentBrandId()),
@@ -58,6 +65,34 @@ final class WebhookPayload
             'subject_id' => $id,
             ...self::body($event),
         ];
+    }
+
+    /**
+     * What makes this moment this moment, and when it happened: the time the
+     * moment wrote on its row (invited_at, claimed_at, revoked_at, closed_at,
+     * sold_out_at, link_switched_at), for a coupon the payment.
+     *
+     * @return array{0: string, 1: \DateTimeInterface|null}
+     */
+    public static function moment(object $event): array
+    {
+        $at = match (true) {
+            $event instanceof SeatInvited => $event->seat->invited_at,
+            $event instanceof SeatAccepted => $event->seat->claimed_at,
+            $event instanceof SeatRevoked => $event->seat->revoked_at,
+            $event instanceof SeatPoolOpened => $event->pool->created_at,
+            $event instanceof SeatPoolClosed => $event->pool->closed_at,
+            $event instanceof OfferSoldOut => $event->offer->sold_out_at,
+            $event instanceof ShortLinkSwitched => $event->offer->link_switched_at,
+            $event instanceof CouponRedeemed => $event->payment->paid_at,
+            default => null,
+        };
+
+        if ($event instanceof CouponRedeemed) {
+            return ['payment-'.$event->payment->id, $at];
+        }
+
+        return [($at ?? now())->format(\DATE_ATOM), $at];
     }
 
     /**

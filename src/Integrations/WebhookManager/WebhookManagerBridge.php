@@ -13,6 +13,7 @@ use Goldnead\StatamicOffers\Events\ShortLinkSwitched;
 use Goldnead\WebhookManager\Events\TriggerDetected;
 use Goldnead\WebhookManager\Facades\WebhookManager;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -100,6 +101,19 @@ class WebhookManagerBridge
      */
     protected function dispatch(string $handle, object $event): void
     {
+        // After the write is committed: a moment inside a transaction that
+        // is rolled back never happened (an invitation inside `invite()`'s
+        // transaction, a seat taken back during a refund). Outside a
+        // transaction this runs at once.
+        try {
+            DB::afterCommit(fn () => $this->deliver($handle, $event));
+        } catch (\Throwable $e) {
+            Log::warning('Offers → Webhook Manager: ['.$handle.'] not dispatched: '.$e->getMessage());
+        }
+    }
+
+    protected function deliver(string $handle, object $event): void
+    {
         try {
             $trigger = WebhookManager::triggers()->get($handle);
 
@@ -110,15 +124,31 @@ class WebhookManagerBridge
             $fire = fn () => event(new TriggerDetected($trigger->build($event)));
             $brandId = $event->brandId ?? null;
 
-            if (is_int($brandId) && $brandId > 0 && app()->bound('brand-context')) {
-                app('brand-context')->runFor($brandId, $fire);
+            if (! is_int($brandId) || $brandId <= 0 || ! app()->bound('brand-context')) {
+                $fire();
 
                 return;
             }
 
-            $fire();
+            // A brand that cannot be made current is not replaced by the one
+            // that happens to be: that would hand a buyer's seats to another
+            // brand's hooks. Not sent, and said so.
+            if (! self::brandExists($brandId)) {
+                Log::warning('Offers → Webhook Manager: ['.$handle.'] not dispatched, its brand ['.$brandId.'] does not exist.');
+
+                return;
+            }
+
+            app('brand-context')->runFor($brandId, $fire);
         } catch (\Throwable $e) {
             Log::warning('Offers → Webhook Manager: ['.$handle.'] not dispatched: '.$e->getMessage());
         }
+    }
+
+    protected static function brandExists(int $brandId): bool
+    {
+        $model = 'Goldnead\\BrandContext\\Models\\Brand';
+
+        return class_exists($model) && $model::query()->whereKey($brandId)->exists();
     }
 }
