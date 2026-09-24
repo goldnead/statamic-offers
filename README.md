@@ -389,17 +389,22 @@ the purchase that sells out, or by the first visit after the date.
 
 With [statamic-webhook-manager](https://github.com/goldnead/statamic-webhook-manager) installed,
 every event above is a trigger (source type `offers`). Without it nothing is loaded;
-`integrations.webhook_manager` (default `true`) switches the bridge off. A hook fires in the event's
-brand.
+`webhook_manager.enabled` (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`, default `true`) switches the
+bridge off. A hook fires in the event's brand.
 
 Every payload starts with the frame the suite addons share: `event` (the handle), `occurred_at`
-(ISO 8601 with offset), `brand` (`{id, handle}` or `null`). **Never a token**: neither a seat's nor
-the pool's `manage_token`, since each opens a seat page as that person.
+(ISO 8601 with offset), `brand` (`{id, handle}` or `null`), `subject_type` and `subject_id` (the
+seat for seat events, `seat_pool` for the pool events, the coupon, else the offer).
+**Never a token**: neither a seat's nor the pool's `manage_token`, since each opens a seat page as
+that person.
 
 - `offer`: `{id, handle, name}`
 - `pool`: `{id, product, seats, taken, owner {email, name}, payment_id, closed_at}`
 - `seat`: `{id, email, name, status, invited_at, claimed_at, revoked_at}`
-- `payment`: `{id, product, amount_cent, currency, status, provider, paid_at}`, no provider ids
+- `payment`: the same block statamic-payments sends in its own webhooks (`id`, `provider`,
+  `provider_id`, `status`, `product`, `amount_cent`, `currency`, discount and refund in cent, buyer
+  `email` and `name`, `country`, `items[]`, `attribution{utm_*}`, timestamps). No card, mandate,
+  customer reference or meta.
 
 | Trigger | Fields after the frame |
 |---|---|

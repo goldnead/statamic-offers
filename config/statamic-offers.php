@@ -214,16 +214,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Integrations
+    | Webhook Manager
     |--------------------------------------------------------------------------
     |
-    | `webhook_manager`: with goldnead/statamic-webhook-manager installed,
-    | every offer event (seats, sold out, coupon redeemed, short link switched)
-    | is a trigger an outbound webhook can listen to. Nothing without it.
+    | With goldnead/statamic-webhook-manager installed, every offer event
+    | (seats, sold out, coupon redeemed, short link switched) is a trigger an
+    | outbound webhook can listen to. Nothing without it.
     |
     */
 
-    'integrations' => [
-        'webhook_manager' => true,
+    'webhook_manager' => [
+        'enabled' => (bool) env('STATAMIC_OFFERS_WEBHOOK_MANAGER', true),
     ],
 ];

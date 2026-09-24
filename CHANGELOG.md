@@ -16,7 +16,7 @@
   `offers`, labels in German and English), fired in the event's brand. The payload is chosen field
   by field and never carries a seat or pool token. Optional: nothing of the webhook manager loads
   without it, proven by a boot test in its own process.
-- Config `integrations.webhook_manager` (default `true`).
+- Config `webhook_manager.enabled` (env `STATAMIC_OFFERS_WEBHOOK_MANAGER`, default `true`).
 
 ## 1.12.0 — 2026-09-23
 

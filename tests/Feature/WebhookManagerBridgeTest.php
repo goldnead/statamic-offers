@@ -171,8 +171,10 @@ class WebhookManagerBridgeTest extends TestCase
 
         $accepted = $events['offers.seat_accepted'][0];
         $this->assertSame('offers', $accepted->sourceType);
-        $this->assertSame('offer:stimmgruppe:pool:'.$pool->id.':seat:'.$seat->id, $accepted->sourceReference);
-        $this->assertSame(['event', 'occurred_at', 'brand', 'offer', 'pool', 'seat'], array_keys($accepted->payload));
+        $this->assertSame((string) $seat->id, $accepted->sourceReference);
+        $this->assertSame(['event', 'occurred_at', 'brand', 'subject_type', 'subject_id', 'offer', 'pool', 'seat'], array_keys($accepted->payload));
+        $this->assertSame(['seat', $seat->id], [$accepted->payload['subject_type'], $accepted->payload['subject_id']]);
+        $this->assertSame(['seat_pool', $pool->id], [$events['offers.seat_pool_opened'][0]->payload['subject_type'], $events['offers.seat_pool_opened'][0]->payload['subject_id']]);
         $this->assertSame(['id' => $pool->offerModel()->id, 'handle' => 'stimmgruppe', 'name' => 'Workshop für die Stimmgruppe'], $accepted->payload['offer']);
         $this->assertSame(['email' => 'leitung@chor.example', 'name' => 'Anna Leitung'], $accepted->payload['pool']['owner']);
         $this->assertSame(3, $accepted->payload['pool']['seats']);
@@ -208,15 +210,26 @@ class WebhookManagerBridgeTest extends TestCase
         $soldOut = $events['offers.sold_out'][0]->payload;
         $this->assertSame(1, $soldOut['quantity_limit']);
         $this->assertSame(1, $soldOut['sold']);
+        $this->assertSame('offer', $soldOut['subject_type']);
 
         $coupon = $events['offers.coupon_redeemed'][0]->payload;
-        $this->assertSame(['id' => Coupon::query()->value('id'), 'code' => 'CHOR20', 'name' => 'Chor 20', 'percent' => 20, 'amount_cent' => null, 'currency' => null], $coupon['coupon']);
+        $couponId = Coupon::query()->value('id');
+        $this->assertSame(['coupon', $couponId], [$coupon['subject_type'], $coupon['subject_id']]);
+        $this->assertSame(['id' => $couponId, 'code' => 'CHOR20', 'name' => 'Chor 20', 'percent' => 20, 'amount_cent' => null, 'currency' => null], $coupon['coupon']);
         $this->assertSame(7800, $coupon['discount_cent']);
-        $this->assertSame(strtoupper($payment->currency), $coupon['currency']);
+        $this->assertSame($payment->currency, $coupon['currency']);
         $this->assertSame(['email' => 'leitung@chor.example', 'name' => 'Anna Leitung'], $coupon['buyer']);
+
+        // Derselbe Zahlungsblock wie in den Webhooks von statamic-payments.
+        $this->assertSame([
+            'id', 'provider', 'provider_id', 'status', 'product', 'amount_cent', 'currency', 'discount_code',
+            'discount_cent', 'refunded_cent', 'email', 'name', 'country', 'subscription_id', 'parent_payment_id',
+            'items', 'attribution', 'created_at', 'paid_at', 'refunded_at', 'charged_back_at',
+        ], array_keys($coupon['payment']));
         $this->assertSame($payment->id, $coupon['payment']['id']);
         $this->assertSame($payment->amount_cent, $coupon['payment']['amount_cent']);
-        $this->assertArrayNotHasKey('provider_id', $coupon['payment']);
+        $this->assertSame('CHOR20', $coupon['payment']['discount_code']);
+        $this->assertArrayNotHasKey('card_last4', $coupon['payment']);
     }
 
     #[Test]

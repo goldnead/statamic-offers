@@ -55,31 +55,15 @@ class OffersTrigger implements TriggerInterface
     }
 
     /**
-     * `offer:<handle>`, with `:pool:<id>`, `:seat:<id>` or `:coupon:<code>`
-     * where there is one: what a delivery can be found by in the log.
+     * The id of the object the payload names as its subject (seat, pool,
+     * coupon or offer).
      *
      * @param  array<string, mixed>  $payload
      */
     protected static function reference(array $payload): ?string
     {
-        $parts = [];
+        $id = $payload['subject_id'] ?? null;
 
-        if (is_string($payload['offer']['handle'] ?? null)) {
-            $parts[] = 'offer:'.$payload['offer']['handle'];
-        }
-
-        if (is_int($payload['pool']['id'] ?? null)) {
-            $parts[] = 'pool:'.$payload['pool']['id'];
-        }
-
-        if (is_int($payload['seat']['id'] ?? null)) {
-            $parts[] = 'seat:'.$payload['seat']['id'];
-        }
-
-        if (is_string($payload['coupon']['code'] ?? null)) {
-            $parts[] = 'coupon:'.$payload['coupon']['code'];
-        }
-
-        return $parts === [] ? null : implode(':', $parts);
+        return is_int($id) ? (string) $id : null;
     }
 }
