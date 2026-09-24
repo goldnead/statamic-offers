@@ -15,6 +15,7 @@ use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
 use Goldnead\StatamicPayments\Models\Payment;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -44,17 +45,15 @@ final class WebhookPayload
     {
         $brandId = $event->brandId ?? null;
         [$type, $id] = self::subjectOf($event);
-        [$key, $at] = self::moment($event);
-        $at ??= now();
+        $parts = self::momentParts($event);
 
         return [
             'event' => $handle,
             // The same moment always gets the same id, however often it is
-            // sent: `<handle>:<subject_id>:<key>`, formed as in the payments
-            // addon. A coupon is keyed by the payment, so a redelivered "paid"
+            // sent. A coupon is keyed by the payment, so a redelivered "paid"
             // is recognisable as the same redemption.
-            'event_id' => $handle.':'.$id.':'.$key,
-            'occurred_at' => $at->format(\DATE_ATOM),
+            'event_id' => self::eventId($handle, $parts),
+            'occurred_at' => self::occurredAt($parts)->format(\DATE_ATOM),
             // The event's brand; on a site without brands the one current,
             // as the other suite addons send it.
             'brand' => self::brand(is_int($brandId) ? $brandId : self::currentBrandId()),
@@ -68,31 +67,101 @@ final class WebhookPayload
     }
 
     /**
-     * What makes this moment this moment, and when it happened: the time the
-     * moment wrote on its row (invited_at, claimed_at, revoked_at, closed_at,
-     * sold_out_at, link_switched_at), for a coupon the payment.
+     * `sha1(handle|part|part…)`, dates as DATE_ATOM: the same recipe in every
+     * addon of the suite.
      *
-     * @return array{0: string, 1: \DateTimeInterface|null}
+     * @param  list<mixed>  $parts
      */
-    public static function moment(object $event): array
+    public static function eventId(string $handle, array $parts): string
     {
-        $at = match (true) {
-            $event instanceof SeatInvited => $event->seat->invited_at,
-            $event instanceof SeatAccepted => $event->seat->claimed_at,
-            $event instanceof SeatRevoked => $event->seat->revoked_at,
-            $event instanceof SeatPoolOpened => $event->pool->created_at,
-            $event instanceof SeatPoolClosed => $event->pool->closed_at,
-            $event instanceof OfferSoldOut => $event->offer->sold_out_at,
-            $event instanceof ShortLinkSwitched => $event->offer->link_switched_at,
-            $event instanceof CouponRedeemed => $event->payment->paid_at,
-            default => null,
-        };
+        return sha1(implode('|', array_map(
+            fn ($part) => $part instanceof \DateTimeInterface ? $part->format(\DATE_ATOM) : (string) $part,
+            [$handle, ...$parts],
+        )));
+    }
 
-        if ($event instanceof CouponRedeemed) {
-            return ['payment-'.$event->payment->id, $at];
+    /**
+     * The first date among the parts, the moment's own time. The clock only
+     * where no row records one.
+     *
+     * @param  list<mixed>  $parts
+     */
+    public static function occurredAt(array $parts): \DateTimeInterface
+    {
+        foreach ($parts as $part) {
+            if ($part instanceof \DateTimeInterface) {
+                return $part;
+            }
         }
 
-        return [($at ?? now())->format(\DATE_ATOM), $at];
+        return now();
+    }
+
+    /**
+     * What separates this moment from every other moment of the same kind:
+     * the row as `<type>:<id>`, then the time the moment wrote on it
+     * (invited_at, claimed_at, revoked_at, created_at, closed_at, sold_out_at,
+     * link_switched_at). A redemption is the coupon and the payment, then
+     * paid_at. Never the time of sending.
+     *
+     * @return list<mixed>
+     */
+    public static function momentParts(object $event): array
+    {
+        return match (true) {
+            $event instanceof SeatInvited => ['seat:'.$event->seat->id, $event->seat->invited_at ?? 'invited'],
+            $event instanceof SeatAccepted => ['seat:'.$event->seat->id, $event->seat->claimed_at ?? 'claimed'],
+            $event instanceof SeatRevoked => ['seat:'.$event->seat->id, $event->seat->revoked_at ?? 'revoked'],
+            $event instanceof SeatPoolOpened => ['seat_pool:'.$event->pool->id, $event->pool->created_at ?? 'opened'],
+            $event instanceof SeatPoolClosed => ['seat_pool:'.$event->pool->id, $event->pool->closed_at ?? 'closed'],
+            $event instanceof OfferSoldOut => ['offer:'.$event->offer->getKey(), $event->offer->sold_out_at ?? 'sold_out'],
+            $event instanceof ShortLinkSwitched => ['offer:'.$event->offer->getKey(), $event->offer->link_switched_at ?? 'switched:'.$event->reason],
+            $event instanceof CouponRedeemed => ['coupon:'.$event->coupon->id, 'payment:'.$event->payment->id, $event->payment->paid_at ?? 'paid'],
+            default => [$event::class],
+        };
+    }
+
+    /**
+     * Run the hand-over as the brand the moment names, or not at all.
+     *
+     * A brand that cannot be made current (a pool or offer stamped with a
+     * brand since deleted) is not replaced by whichever brand is current: its
+     * hooks belong to another tenant. Logged, not delivered. No brand named,
+     * or no brand-context installed: runs as it is. The same rule as the
+     * payments addon's `WebhookPayload::runForBrand()`.
+     *
+     * @param  \Closure(): void  $callback
+     */
+    public static function runForBrand(?int $brand, \Closure $callback, string $handle): bool
+    {
+        if (! $brand || ! app()->bound('brand-context')) {
+            $callback();
+
+            return true;
+        }
+
+        $ran = false;
+
+        try {
+            app('brand-context')->runFor($brand, function () use ($callback, &$ran): void {
+                $ran = true;
+                $callback();
+            });
+
+            return true;
+        } catch (Throwable $e) {
+            if ($ran) {
+                throw $e;
+            }
+
+            Log::warning('statamic-offers: the moment names a brand that cannot be set; the webhook was not delivered rather than sent through another brand\'s hooks.', [
+                'trigger' => $handle,
+                'brand_id' => $brand,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     /**

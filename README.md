@@ -405,7 +405,8 @@ if it is rolled back. **Order is not guaranteed** (retries, queues): sort by `oc
 deduplicate on `event_id`.
 
 Every payload starts with the frame the suite addons share: `event` (the handle), `event_id`
-(`<handle>:<subject_id>:<time of the moment>`, for a coupon `…:payment-<id>`, the same for the same
+(`sha1(handle|<type>:<id>|<time the row records>)`, the recipe of every suite addon; for a coupon
+`coupon:<id>|payment:<id>|<paid_at>`; the same for the same
 moment however often it is sent, a redelivered payment included), `occurred_at` (when the moment
 happened, ISO 8601 with offset), `brand` (`{id, handle}` or `null`), `subject_type` and `subject_id` (the
 seat for seat events, `seat_pool` for the pool events, the coupon, else the offer).

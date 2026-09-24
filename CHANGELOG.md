@@ -20,7 +20,8 @@
   `offers`, labels in German and English), fired in the event's brand. The payload is chosen field
   by field and never carries a seat or pool token. Optional: nothing of the webhook manager loads
   without it, proven by a boot test in its own process.
-- Every webhook payload carries a stable `event_id` (for a coupon keyed by the payment, so a
+- Every webhook payload carries a stable `event_id` (`sha1(handle|<type>:<id>|<row time>)`, as in
+  every suite addon; for a coupon keyed by the payment, so a
   redelivered "paid" is recognisable), and `occurred_at` is the time of the moment. Sent after the
   transaction commits, never after a rollback; an event whose brand does not exist sends nothing
   instead of reaching the current brand's hooks.

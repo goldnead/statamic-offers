@@ -292,11 +292,12 @@ class WebhookManagerBridgeTest extends TestCase
         $again = WebhookManager::triggers()->get('offers.coupon_redeemed')->build(new CouponRedeemed($coupon, $payment));
         $first = $this->detected()['offers.coupon_redeemed'][0];
         $this->assertSame($first->payload['event_id'], $again->payload['event_id']);
-        $this->assertSame('offers.coupon_redeemed:'.$coupon->id.':payment-'.$payment->id, $again->payload['event_id']);
+        // The suite's recipe: sha1(handle|<type>:<id>|…|<the row's time>).
+        $this->assertSame(sha1('offers.coupon_redeemed|coupon:'.$coupon->id.'|payment:'.$payment->id.'|'.$payment->paid_at->format(\DATE_ATOM)), $again->payload['event_id']);
         $this->assertSame($payment->paid_at->format(\DATE_ATOM), $again->eventAt->format(\DATE_ATOM));
 
         $accepted = $this->detected()['offers.seat_accepted'][0];
-        $this->assertSame('offers.seat_accepted:'.$seat->id.':'.$seat->claimed_at->format(\DATE_ATOM), $accepted->payload['event_id']);
+        $this->assertSame(sha1('offers.seat_accepted|seat:'.$seat->id.'|'.$seat->claimed_at->format(\DATE_ATOM)), $accepted->payload['event_id']);
         $this->assertSame($seat->claimed_at->format(\DATE_ATOM), $accepted->payload['occurred_at']);
         $this->assertSame(
             $accepted->payload['event_id'],
@@ -316,7 +317,7 @@ class WebhookManagerBridgeTest extends TestCase
         OfferSoldOut::dispatch($offer, 1);
 
         $this->assertSame(0, DB::table('webhook_deliveries')->count());
-        Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains($message, 'brand [999] does not exist'));
+        Log::shouldHaveReceived('warning')->withArgs(fn ($message, $context = []) => str_contains($message, 'brand that cannot be set') && ($context['brand_id'] ?? null) === 999);
     }
 
     #[Test]

@@ -121,34 +121,17 @@ class WebhookManagerBridge
                 return;
             }
 
-            $fire = fn () => event(new TriggerDetected($trigger->build($event)));
             $brandId = $event->brandId ?? null;
 
-            if (! is_int($brandId) || $brandId <= 0 || ! app()->bound('brand-context')) {
-                $fire();
-
-                return;
-            }
-
-            // A brand that cannot be made current is not replaced by the one
-            // that happens to be: that would hand a buyer's seats to another
-            // brand's hooks. Not sent, and said so.
-            if (! self::brandExists($brandId)) {
-                Log::warning('Offers → Webhook Manager: ['.$handle.'] not dispatched, its brand ['.$brandId.'] does not exist.');
-
-                return;
-            }
-
-            app('brand-context')->runFor($brandId, $fire);
+            // In the event's brand, or not at all when that brand cannot be
+            // set: the only brand left would be whichever is current.
+            WebhookPayload::runForBrand(
+                is_int($brandId) && $brandId > 0 ? $brandId : null,
+                fn () => event(new TriggerDetected($trigger->build($event))),
+                $handle,
+            );
         } catch (\Throwable $e) {
             Log::warning('Offers → Webhook Manager: ['.$handle.'] not dispatched: '.$e->getMessage());
         }
-    }
-
-    protected static function brandExists(int $brandId): bool
-    {
-        $model = 'Goldnead\\BrandContext\\Models\\Brand';
-
-        return class_exists($model) && $model::query()->whereKey($brandId)->exists();
     }
 }
