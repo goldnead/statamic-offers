@@ -364,6 +364,54 @@ Two numbers per offer: how often it was **shown**, and how often it was **accept
 Accepted means **paid**, not clicked. An offer whose conversion rate counts clicks flatters itself
 every time a card is declined, and the number nobody can trust is worse than no number.
 
+### Events
+
+Every event carries `brandId` (the brand of the pool, offer or payment; `null` without brands), so a
+listener started from the provider's webhook or a seat page opened from a mail runs in the right
+brand. Each fires once per moment, also on a redelivered webhook or a double click.
+
+| Event | When | Properties |
+|---|---|---|
+| `SeatPoolOpened` | a paid purchase of seats opened its pool | `pool` |
+| `SeatInvited` | a seat was given to an address | `seat`, `pool` |
+| `SeatAccepted` | the invited person accepted, access granted | `seat`, `pool` |
+| `SeatRevoked` | a seat was taken back (after its access was revoked) | `seat`, `pool`, `previousStatus` (`claimed`/`invited`), `reason` |
+| `SeatPoolClosed` | full refund or chargeback closed the pool, after its seats | `pool`, `reason` |
+| `OfferSoldOut` | a paid purchase took the last unit of a limited offer | `offer`, `sold` |
+| `CouponRedeemed` | a payment that used a coupon is paid | `coupon`, `payment` |
+| `ShortLinkSwitched` | the short link leads to its second target for the first time | `offer`, `reason` (`date`/`sold_out`) |
+
+Sold out and the switch are marked on the offer (`sold_out_at`, `link_switched_at`) and cleared when
+it opens again (limit raised, date moved), so the next change fires again. The switch is noticed by
+the purchase that sells out, or by the first visit after the date.
+
+### Webhooks
+
+With [statamic-webhook-manager](https://github.com/goldnead/statamic-webhook-manager) installed,
+every event above is a trigger (source type `offers`). Without it nothing is loaded;
+`integrations.webhook_manager` (default `true`) switches the bridge off. A hook fires in the event's
+brand.
+
+Every payload starts with the frame the suite addons share: `event` (the handle), `occurred_at`
+(ISO 8601 with offset), `brand` (`{id, handle}` or `null`). **Never a token**: neither a seat's nor
+the pool's `manage_token`, since each opens a seat page as that person.
+
+- `offer`: `{id, handle, name}`
+- `pool`: `{id, product, seats, taken, owner {email, name}, payment_id, closed_at}`
+- `seat`: `{id, email, name, status, invited_at, claimed_at, revoked_at}`
+- `payment`: `{id, product, amount_cent, currency, status, provider, paid_at}`, no provider ids
+
+| Trigger | Fields after the frame |
+|---|---|
+| `offers.seat_pool_opened` | `offer`, `pool` |
+| `offers.seat_invited` | `offer`, `pool`, `seat` |
+| `offers.seat_accepted` | `offer`, `pool`, `seat` |
+| `offers.seat_revoked` | `offer`, `pool`, `seat`, `previous_status`, `reason` |
+| `offers.seat_pool_closed` | `offer`, `pool`, `reason` |
+| `offers.sold_out` | `offer`, `quantity_limit`, `sold` |
+| `offers.coupon_redeemed` | `coupon {id, code, name, percent, amount_cent, currency}`, `discount_cent`, `currency`, `buyer {email, name}`, `payment` |
+| `offers.link_switched` | `offer`, `reason`, `link {slug, target, fallback, switch_at}` |
+
 ## Configuration
 
 | Key | Default | What happens when it is wrong |

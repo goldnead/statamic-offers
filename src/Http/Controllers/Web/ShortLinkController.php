@@ -3,6 +3,7 @@
 namespace Goldnead\StatamicOffers\Http\Controllers\Web;
 
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\OfferMoments;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -33,6 +34,9 @@ class ShortLinkController extends Controller
 
         $weiche = $offer->linkDestination();
         $offer->recordLinkHit($weiche);
+
+        // Der erste Aufruf nach dem Stichtag meldet den Wechsel.
+        app(OfferMoments::class)->link($offer, $weiche);
 
         $url = $weiche === Offer::LINK_FALLBACK ? trim((string) $offer->link_fallback) : $ziel;
 

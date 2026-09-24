@@ -15,6 +15,8 @@ use Goldnead\StatamicPayments\Models\Payment;
  */
 class OfferAcceptance
 {
+    public function __construct(protected OfferMoments $moments) {}
+
     public function handle(PaymentPaid $event): void
     {
         $this->countFor($event->payment);
@@ -39,10 +41,18 @@ class OfferAcceptance
         }
 
         foreach (array_keys($angebote) as $angebot) {
-            Offer::query()
-                ->where('handle', $angebot)
-                ->first()
-                ?->recordAccepted();
+            $offer = Offer::query()->where('handle', $angebot)->first();
+
+            if ($offer === null) {
+                continue;
+            }
+
+            $offer->recordAccepted();
+
+            // Ausverkauft und die Link-Weiche: bemerkt vom Kauf, der sie ausloest.
+            $this->moments->afterSale($offer);
         }
+
+        $this->moments->couponOf($payment);
     }
 }

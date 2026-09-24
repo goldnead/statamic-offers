@@ -10,6 +10,7 @@ use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Integrations\EntitlementsSeatAccess;
+use Goldnead\StatamicOffers\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
@@ -90,6 +91,9 @@ class ServiceProvider extends AddonServiceProvider
         // (und ein Test eine Attrappe).
         $this->app->bindIf(SeatAccess::class, EntitlementsSeatAccess::class);
 
+        // Singleton, damit die Boot-Sperre der Brücke auch für den Retry gilt.
+        $this->app->singleton(WebhookManagerBridge::class);
+
         // Registered here rather than in `bootAddon()`, which only runs when
         // the addon is discovered through the manifest. Without it an offer
         // resolves to nothing and simply cannot be bought — a failure that
@@ -115,6 +119,30 @@ class ServiceProvider extends AddonServiceProvider
         // Eine Anmeldung dort erreichte die Live-Config auf manchen
         // Installationen und auf anderen nicht.
         $this->app->make(SettingsRegistry::class)->register(Settings::class);
+
+        // Aus boot() eingereiht, nicht aus bootAddon(): dort feuerte ein
+        // verschachteltes `booted()` sofort, womöglich vor dem bootAddon()
+        // des Webhook-Managers.
+        $this->registerWebhookManagerBridge();
+    }
+
+    /**
+     * Angebots-Ereignisse als Auslöser im Webhook-Manager, wenn der
+     * installiert ist. Ein Versuch nach dem Booten und einer ganz am Ende der
+     * Schlange, für Installationen, auf denen der erste noch zu früh kommt.
+     */
+    protected function registerWebhookManagerBridge(): self
+    {
+        $boot = function (): void {
+            $this->app->make(WebhookManagerBridge::class)->boot($this->app->make('events'));
+        };
+
+        $this->app->booted(function () use ($boot): void {
+            $boot();
+            $this->app->booted($boot);
+        });
+
+        return $this;
     }
 
     public function bootAddon()

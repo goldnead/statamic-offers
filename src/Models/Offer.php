@@ -2,6 +2,8 @@
 
 namespace Goldnead\StatamicOffers\Models;
 
+use Goldnead\StatamicOffers\Events\OfferSoldOut;
+use Goldnead\StatamicOffers\Events\ShortLinkSwitched;
 use Goldnead\StatamicOffers\Offers;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicPayments\Support\Brands;
@@ -67,6 +69,8 @@ use Illuminate\Support\Carbon;
  * @property bool $link_switch_on_sold_out
  * @property int $link_hits_target
  * @property int $link_hits_fallback
+ * @property Carbon|null $sold_out_at — gemeldet als ausverkauft ({@see OfferSoldOut})
+ * @property Carbon|null $link_switched_at — Weiche umgeschlagen gemeldet ({@see ShortLinkSwitched})
  * @property int|null $seats
  * @property string $slot
  * @property bool $active
@@ -169,6 +173,8 @@ class Offer extends Model
             'link_hits_target' => 'integer',
             'link_hits_fallback' => 'integer',
             'seats' => 'integer',
+            'sold_out_at' => 'datetime',
+            'link_switched_at' => 'datetime',
         ];
     }
 

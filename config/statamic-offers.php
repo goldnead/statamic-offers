@@ -211,4 +211,19 @@ return [
         'company' => ['label' => 'statamic-offers::messages.checkout_field_company', 'type' => 'text', 'required' => false],
         'vat_id' => ['label' => 'statamic-offers::messages.checkout_field_vat_id', 'type' => 'text', 'required' => false, 'rules' => ['max:20']],
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Integrations
+    |--------------------------------------------------------------------------
+    |
+    | `webhook_manager`: with goldnead/statamic-webhook-manager installed,
+    | every offer event (seats, sold out, coupon redeemed, short link switched)
+    | is a trigger an outbound webhook can listen to. Nothing without it.
+    |
+    */
+
+    'integrations' => [
+        'webhook_manager' => true,
+    ],
 ];

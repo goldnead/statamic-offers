@@ -20,10 +20,12 @@
     "laravel/pint": "^1.18",
     "orchestra/testbench": "^10.0 || ^11.0",
     "phpunit/phpunit": "^11.0 || ^12.0",
-    "goldnead/statamic-entitlements": "^1.4"
+    "goldnead/statamic-entitlements": "^1.4",
+    "goldnead/statamic-webhook-manager": "^2.9"
   },
   "suggest": {
-    "goldnead/statamic-entitlements": "Grants and revokes the access of seats for groups (^1.4)."
+    "goldnead/statamic-entitlements": "Grants and revokes the access of seats for groups (^1.4).",
+    "goldnead/statamic-webhook-manager": "Sends offer events (seat accepted, sold out, coupon redeemed, short link switched, ...) to outbound webhooks."
   },
   "autoload": {
     "psr-4": {

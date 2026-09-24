@@ -3,6 +3,11 @@
 namespace Goldnead\StatamicOffers\Support;
 
 use Goldnead\StatamicOffers\Contracts\SeatAccess;
+use Goldnead\StatamicOffers\Events\SeatAccepted;
+use Goldnead\StatamicOffers\Events\SeatInvited;
+use Goldnead\StatamicOffers\Events\SeatPoolClosed;
+use Goldnead\StatamicOffers\Events\SeatPoolOpened;
+use Goldnead\StatamicOffers\Events\SeatRevoked;
 use Goldnead\StatamicOffers\Mail\SeatInvitationMail;
 use Goldnead\StatamicOffers\Mail\SeatPoolMail;
 use Goldnead\StatamicOffers\Models\Offer;
@@ -108,6 +113,8 @@ class SeatPools
             }
 
             $this->mail(fn () => Mail::to($email)->send(new SeatPoolMail($pool)), $pool->id, 'pool');
+
+            SeatPoolOpened::dispatch($pool);
         }
 
         return $neu;
@@ -158,6 +165,8 @@ class SeatPools
 
         $this->mail(fn () => Mail::to($email)->send(new SeatInvitationMail($seat)), $pool->id, 'invitation');
 
+        SeatInvited::dispatch($seat, $pool);
+
         return $seat;
     }
 
@@ -187,6 +196,8 @@ class SeatPools
         }
 
         $this->inBrandOf($pool, fn () => $this->access->grant($seat->email, $pool->grantList(), $seat->sourceRef(), $pool->access));
+
+        SeatAccepted::dispatch($seat->fresh() ?? $seat, $pool);
 
         return true;
     }
@@ -245,6 +256,8 @@ class SeatPools
                 ->update(['status' => Seat::STATUS_REVOKED, 'revoked_at' => Carbon::now(), 'updated_at' => Carbon::now()]);
 
             if ($gewonnen > 0) {
+                SeatRevoked::dispatch($seat->fresh() ?? $seat, $seat->pool, (string) $vorher, $reason);
+
                 return true;
             }
         }
@@ -307,6 +320,11 @@ class SeatPools
 
         foreach ($pool->seatRows()->where('status', '!=', Seat::STATUS_REVOKED)->get() as $seat) {
             $this->revoke($seat, $reason);
+        }
+
+        // Nach den Plaetzen: wer das hoert, findet sie schon zurueckgeholt.
+        if ($gewonnen > 0) {
+            SeatPoolClosed::dispatch($pool->fresh() ?? $pool, $reason);
         }
 
         return $gewonnen > 0;
