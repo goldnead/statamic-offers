@@ -7,6 +7,8 @@ use Goldnead\StatamicOffers\Support\OfferMoments;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Die Link-Weiche: `/go/<slug>` fuehrt zu Ziel A oder Ziel B.
@@ -35,8 +37,16 @@ class ShortLinkController extends Controller
         $weiche = $offer->linkDestination();
         $offer->recordLinkHit($weiche);
 
-        // Der erste Aufruf nach dem Stichtag meldet den Wechsel.
-        app(OfferMoments::class)->link($offer, $weiche);
+        // Der erste Aufruf nach dem Stichtag meldet den Wechsel. Nie auf
+        // Kosten der Weiterleitung: der Link steht auf einem Flyer.
+        try {
+            app(OfferMoments::class)->link($offer, $weiche);
+        } catch (Throwable $e) {
+            Log::error('statamic-offers: the short link switch could not be announced.', [
+                'offer' => $offer->handle,
+                'exception' => $e->getMessage(),
+            ]);
+        }
 
         $url = $weiche === Offer::LINK_FALLBACK ? trim((string) $offer->link_fallback) : $ziel;
 

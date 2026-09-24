@@ -5,7 +5,7 @@ return [
     'seat_invited' => 'Offers: seat invited',
     'seat_accepted' => 'Offers: seat accepted',
     'seat_revoked' => 'Offers: seat taken back',
-    'seat_pool_closed' => 'Offers: seats closed (refund)',
+    'seat_pool_closed' => 'Offers: seats closed',
     'sold_out' => 'Offers: sold out',
     'coupon_redeemed' => 'Offers: coupon redeemed',
     'link_switched' => 'Offers: short link switched',

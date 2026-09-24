@@ -377,13 +377,20 @@ brand. Each fires once per moment, also on a redelivered webhook or a double cli
 | `SeatAccepted` | the invited person accepted, access granted | `seat`, `pool` |
 | `SeatRevoked` | a seat was taken back (after its access was revoked) | `seat`, `pool`, `previousStatus` (`claimed`/`invited`), `reason` |
 | `SeatPoolClosed` | full refund or chargeback closed the pool, after its seats | `pool`, `reason` |
-| `OfferSoldOut` | a paid purchase took the last unit of a limited offer | `offer`, `sold` |
-| `CouponRedeemed` | a payment that used a coupon is paid | `coupon`, `payment` |
+| `OfferSoldOut` | paid purchases reached the limit of a limited offer | `offer`, `sold` (paid units) |
+| `CouponRedeemed` | a payment that used a coupon is paid (once per payment) | `coupon`, `payment` |
 | `ShortLinkSwitched` | the short link leads to its second target for the first time | `offer`, `reason` (`date`/`sold_out`) |
 
 Sold out and the switch are marked on the offer (`sold_out_at`, `link_switched_at`) and cleared when
-it opens again (limit raised, date moved), so the next change fires again. The switch is noticed by
-the purchase that sells out, or by the first visit after the date.
+it opens again (limit raised, date moved), so the next change fires again. **Sold out counts paid
+purchases only**: an open checkout holds a unit back from the next checkout (see Limits), but a
+declined card must not have announced "sold out". The short link, which follows the same limit
+including open checkouts, can therefore switch before `OfferSoldOut` fires. The switch is noticed by
+the purchase that sells out, or by the first visit after the date. A redemption is recorded in
+`offer_coupon_redemptions`, so a redelivered "paid" does not redeem twice.
+
+None of this can hold up a purchase or the short link: a failing moment is logged, and on a site
+that has not run the migration yet the moments are skipped until it has.
 
 ### Webhooks
 

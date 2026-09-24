@@ -14,16 +14,20 @@ use Goldnead\StatamicOffers\Events\ShortLinkSwitched;
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Support\OfferMoments;
 use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Tests\TestCase;
+use Goldnead\StatamicPayments\Events\PaymentPaid;
 use Goldnead\StatamicPayments\Models\Payment;
 use Goldnead\StatamicPayments\Support\Checkout;
 use Goldnead\StatamicPayments\Support\Discount;
 use Goldnead\StatamicPayments\Support\Fulfilment;
 use Goldnead\StatamicPayments\Support\Refunds;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 
 // FakeSeatAccess steht dort; allein gestartet laedt PHPUnit die Datei sonst nicht.
@@ -175,6 +179,79 @@ class OfferEventsTest extends TestCase
         Event::assertDispatchedTimes(OfferSoldOut::class, 1);
         Event::assertDispatched(OfferSoldOut::class, fn (OfferSoldOut $e) => $e->offer->is($offer) && $e->sold === 2);
         $this->assertNotNull($offer->fresh()->sold_out_at);
+    }
+
+    #[Test]
+    public function only_paid_purchases_sell_out_not_open_checkouts(): void
+    {
+        Event::fake([OfferSoldOut::class]);
+        $offer = $this->offer(['quantity_limit' => 2]);
+
+        // Somebody is still typing a card number: reserved, not sold.
+        $offen = app(Checkout::class)->start('offer:stimmgruppe', ['email' => 'offen@chor.example'])->payment;
+        $this->buy();
+
+        Event::assertNotDispatched(OfferSoldOut::class);
+        $this->assertNull($offer->fresh()->sold_out_at);
+
+        // Now the open one is paid too.
+        $this->gateway->markPaid($offen->provider_id);
+        app(Fulfilment::class)->handle($offen->provider_id);
+        Event::assertDispatched(OfferSoldOut::class, fn (OfferSoldOut $e) => $e->sold === 2);
+    }
+
+    #[Test]
+    public function a_redelivered_paid_event_redeems_a_coupon_once(): void
+    {
+        Event::fake([CouponRedeemed::class]);
+        $this->offer();
+        Coupon::create(['code' => 'CHOR20', 'percent' => 20, 'active' => true]);
+
+        // A listener that fails the first delivery: payments gives its claim
+        // back and the provider delivers "paid" again.
+        $failed = false;
+        Event::listen(PaymentPaid::class, function () use (&$failed) {
+            if (! $failed) {
+                $failed = true;
+                throw new \RuntimeException('Mailserver weg');
+            }
+        });
+
+        $payment = app(Checkout::class)->start('offer:stimmgruppe', ['email' => 'leitung@chor.example'], null, new Discount('CHOR20', 7800))->payment;
+        $this->gateway->markPaid($payment->provider_id);
+
+        try {
+            app(Fulfilment::class)->handle($payment->provider_id);
+        } catch (\RuntimeException) {
+            // The provider hears a failure and delivers again.
+        }
+
+        app(Fulfilment::class)->handle($payment->provider_id);
+
+        $this->assertTrue($failed);
+        $this->assertNotNull($payment->fresh()->fulfilled_at);
+        Event::assertDispatchedTimes(CouponRedeemed::class, 1);
+    }
+
+    #[Test]
+    public function without_the_new_migration_a_sale_and_the_short_link_still_work(): void
+    {
+        // A site that updated the code and has not run `migrate` yet.
+        Schema::table('offers', fn (Blueprint $table) => $table->dropColumn(['sold_out_at', 'link_switched_at']));
+        OfferMoments::forgetColumns();
+
+        $this->offer([
+            'quantity_limit' => 1,
+            'link_slug' => 'herbst',
+            'link_target' => '/workshop',
+            'link_fallback' => '/warteliste',
+            'link_switch_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $payment = $this->buy();
+
+        $this->assertNotNull($payment->fresh()->fulfilled_at);
+        $this->get('/go/herbst')->assertRedirect('/warteliste');
     }
 
     #[Test]

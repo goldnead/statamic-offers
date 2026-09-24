@@ -4,13 +4,17 @@
 
 ### Upgrading
 
-- Run `php artisan migrate`: one migration adds `sold_out_at` and `link_switched_at` to `offers`.
+- Run `php artisan migrate`: one migration adds `sold_out_at` and `link_switched_at` to `offers`
+  and the table `offer_coupon_redemptions`. Until then purchases and short links work as before;
+  only the new moments are skipped.
 
 ### Added
 
 - **Events.** Until now this addon fired none. `SeatPoolOpened`, `SeatInvited`, `SeatAccepted`,
   `SeatRevoked`, `SeatPoolClosed`, `OfferSoldOut`, `CouponRedeemed` and `ShortLinkSwitched`, each
-  once per moment and with `brandId`. Listed with their properties in the README.
+  once per moment and with `brandId`. Listed with their properties in the README. `OfferSoldOut`
+  counts paid purchases only; `CouponRedeemed` fires once per payment, also when payments delivers
+  "paid" again. A failing moment is logged and never holds up the purchase or the short link.
 - **Webhook Manager triggers.** With goldnead/statamic-webhook-manager installed, each event is a
   trigger (`offers.seat_accepted`, `offers.sold_out`, `offers.coupon_redeemed`, …, source type
   `offers`, labels in German and English), fired in the event's brand. The payload is chosen field

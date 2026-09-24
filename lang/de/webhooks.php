@@ -5,7 +5,7 @@ return [
     'seat_invited' => 'Angebote: Platz vergeben',
     'seat_accepted' => 'Angebote: Platz angenommen',
     'seat_revoked' => 'Angebote: Platz zurückgeholt',
-    'seat_pool_closed' => 'Angebote: Plätze geschlossen (Erstattung)',
+    'seat_pool_closed' => 'Angebote: Plätze geschlossen',
     'sold_out' => 'Angebote: Kontingent ausverkauft',
     'coupon_redeemed' => 'Angebote: Gutschein eingelöst',
     'link_switched' => 'Angebote: Kurzlink umgeschaltet',

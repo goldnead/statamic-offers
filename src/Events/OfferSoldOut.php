@@ -7,12 +7,13 @@ use Goldnead\StatamicOffers\Support\OfferSales;
 use Illuminate\Foundation\Events\Dispatchable;
 
 /**
- * An offer with a quantity limit has nothing left: a paid purchase took the
- * last unit. Once per sell-out; should the limit be raised and the offer
- * sell out again, it fires again.
+ * An offer with a quantity limit has nothing left: paid purchases have
+ * reached the limit. Once per sell-out; should the limit be raised and the
+ * offer sell out again, it fires again.
  *
- * `$sold` is what the limit is compared against, open checkouts of the last
- * hour included ({@see OfferSales}).
+ * `$sold` counts paid units only. Open checkouts of the last hour hold units
+ * back from new checkouts ({@see OfferSales::sold()}), but they are not a
+ * sale, and a declined card must not have announced "sold out".
  */
 class OfferSoldOut
 {

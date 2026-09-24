@@ -5,6 +5,8 @@ namespace Goldnead\StatamicOffers\Support;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicPayments\Events\PaymentPaid;
 use Goldnead\StatamicPayments\Models\Payment;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Counting what was accepted.
@@ -49,10 +51,26 @@ class OfferAcceptance
 
             $offer->recordAccepted();
 
-            // Ausverkauft und die Link-Weiche: bemerkt vom Kauf, der sie ausloest.
-            $this->moments->afterSale($offer);
+            // Ausverkauft und die Link-Weiche: bemerkt vom Kauf, der sie
+            // ausloest. Nie auf Kosten des Kaufs: wirft das hier, gibt
+            // payments die Erfuellung frei, und die bezahlte Zahlung bliebe
+            // unerfuellt, bei jeder Neuzustellung wieder.
+            $this->guarded(fn () => $this->moments->afterSale($offer), 'sold out / short link', $payment, $angebot);
         }
 
-        $this->moments->couponOf($payment);
+        $this->guarded(fn () => $this->moments->couponOf($payment), 'coupon redeemed', $payment);
+    }
+
+    protected function guarded(callable $moment, string $what, Payment $payment, ?string $offer = null): void
+    {
+        try {
+            $moment();
+        } catch (Throwable $e) {
+            Log::error('statamic-offers: the '.$what.' moment failed; the purchase is unaffected.', [
+                'payment_id' => $payment->getKey(),
+                'offer' => $offer,
+                'exception' => $e->getMessage(),
+            ]);
+        }
     }
 }

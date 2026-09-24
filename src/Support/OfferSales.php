@@ -88,6 +88,15 @@ class OfferSales
     }
 
     /**
+     * Units in paid payments only, without the open checkouts `sold()` holds
+     * back. Null without statamic-payments' tables.
+     */
+    public static function paid(Offer $offer): ?int
+    {
+        return self::available() ? self::unitsOf($offer, self::paidLines()) : null;
+    }
+
+    /**
      * Die Stueckzahl eines Angebots in diesen Zeilen, **mit jedem Zusatz**.
      *
      * Frueher zaehlte nur der nackte Handle. Ein Kauf ueber `offer:x:raten3`
