@@ -99,7 +99,7 @@ return [
     // --- Bumps an einem Angebot --------------------------------------------
     'column_bumps' => 'Bumps',
     'field_bumps' => 'Bumps',
-    'field_bumps_help' => 'Angebote, die im Bezahlvorgang als Häkchen neben diesem stehen. Auswählbar sind nur Angebote am Ort „Im Checkout“, und die Reihenfolge der Auswahl ist die Reihenfolge der Anzeige. Hier stehen Angebote und keine Produkte, weil ein Bump seinen eigenen Preis haben kann: dasselbe Produkt kostet als Bump etwas anderes als im Katalog.',
+    'field_bumps_help' => 'Hier wählst du Angebote und keine Produkte, weil ein Bump seinen eigenen Preis haben kann: dasselbe Produkt kostet als Bump etwas anderes als im Katalog, und das legt das Angebot fest. Gewählt werden Angebote am Ort „Im Checkout“. Sie erscheinen als Häkchen neben diesem Angebot, in der Reihenfolge deiner Auswahl.',
     'field_bumps_placeholder' => 'Angebote wählen',
     'field_bumps_empty' => 'Es gibt noch kein Angebot am Ort „Im Checkout“. Lege eines an und setze seinen Ort auf „Im Checkout“, dann steht es hier zur Wahl.',
     'field_bumps_invalid' => 'Jeder Bump muss ein vorhandenes Angebot am Ort „Im Checkout“ sein, und nie dieses Angebot selbst.',

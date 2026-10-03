@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Inertia\Inertia;
+use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
@@ -102,18 +103,27 @@ class OffersController extends CpController
             return $setup;
         }
 
-        return $this->page($this->ownOffer($offer));
+        // `pageNotFound()` ist die 404-Seite des Control Panels, mit Navigation.
+        // Eine Exception haette die nackte Zeile des Laravel-Handlers gegeben.
+        // Der Zweig ist derselbe fuer „gibt es nicht" und „gehoert einer anderen
+        // Marke": mehr verraet die Antwort nicht.
+        $model = Offer::query()->forBrand()->find($offer);
+
+        return $model === null ? $this->pageNotFound() : $this->page($model);
     }
 
     protected function page(?Offer $offer)
     {
+        $detail = $offer === null ? null : (new ListedOffer($offer))->detail();
+
         return Inertia::render('statamic-offers::Offers/Show', [
             'offer' => $offer === null ? null : [
                 'id' => $offer->id,
                 'name' => $offer->name,
                 'sellable' => $offer->isSellable(),
-                ...(new ListedOffer($offer))->detail(),
+                ...$detail,
             ],
+            'dates' => $this->dateFields($detail['edit_values'] ?? []),
             'indexUrl' => cp_route('utilities.offers'),
             'storeUrl' => cp_route('utilities.offers.store'),
             'updateUrl' => $offer === null ? null : cp_route('utilities.offers.update', ['offer' => $offer->id]),
@@ -211,6 +221,8 @@ class OffersController extends CpController
      */
     protected function validated(Request $request, ?Offer $offer = null): array
     {
+        $this->normaliseDates($request);
+
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:191'],
             'handle' => [
@@ -776,6 +788,101 @@ class OffersController extends CpController
     protected function ownOffer(string $id): Offer
     {
         return Offer::query()->forBrand()->findOrFail($id);
+    }
+
+    /**
+     * Die vier Datumsfelder als Felder des Kerns.
+     *
+     * Datum und Uhrzeit sind Statamics eigener `date`-Feldtyp, in einem
+     * `PublishContainer` gefahren (wie die Dateiauswahl im Lead-Magnets-Addon):
+     * dasselbe Feldbild, dieselbe 24-Stunden-Eingabe und kein zweiter
+     * Datumsbaustein im Bundle. Gespeichert wird weiter ein String in der
+     * Anzeige-Zeitzone; umgepackt wird an dieser Naht, hin hier, zurueck im
+     * Formular.
+     *
+     * @param  array<string, mixed>  $values  `edit_values` des Angebots
+     * @return array{blueprint: array<string, mixed>, values: array<string, mixed>, meta: array<string, mixed>}
+     */
+    protected function dateFields(array $values): array
+    {
+        $field = fn (string $label, bool $time) => [
+            'type' => 'date',
+            'display' => __('statamic-offers::messages.'.$label),
+            'mode' => 'single',
+            'time_enabled' => $time,
+            'inline' => false,
+        ];
+
+        $blueprint = Blueprint::makeFromFields([
+            'available_from' => $field('field_available_from', true),
+            'available_until' => $field('field_available_until', true),
+            'link_switch_at' => $field('field_link_switch_at', true),
+            'access_starts_at' => $field('field_access_starts_at', false),
+        ]);
+
+        // Der Feldtyp haelt einen Zeitpunkt (ISO, UTC) und zeigt ihn in der
+        // Zeitzone, die ihm sein Meta nennt: der Anzeige-Zeitzone. Gespeichert
+        // ist hier eine Uhrzeit in ihr, ohne Zone; also erst in einen Zeitpunkt
+        // umrechnen. Ein Tag ohne Uhrzeit bleibt ein Tag.
+        $zone = Offers::displayTimezone();
+
+        $instant = function (string $key, bool $time) use ($values, $zone): ?string {
+            $value = $values[$key] ?? null;
+
+            if (blank($value)) {
+                return null;
+            }
+
+            return $time
+                ? Carbon::parse((string) $value, $zone)->utc()->format('Y-m-d\TH:i:s.000\Z')
+                : Carbon::parse((string) $value)->format('Y-m-d').'T00:00:00.000Z';
+        };
+
+        $fields = $blueprint->fields()->addValues([
+            'available_from' => $instant('available_from', true),
+            'available_until' => $instant('available_until', true),
+            'link_switch_at' => $instant('link_switch_at', true),
+            'access_starts_at' => $instant('access_starts_at', false),
+        ]);
+
+        return [
+            'blueprint' => $blueprint->toPublishArray(),
+            'values' => $fields->values()->all(),
+            'meta' => collect($fields->meta()->all())
+                ->map(fn ($meta) => array_merge((array) $meta, ['timezone' => $zone]))
+                ->all(),
+        ];
+    }
+
+    /**
+     * Die Datumsfelder, wie der `date`-Feldtyp sie schickt, in das Format, das
+     * der Rest dieses Controllers liest.
+     *
+     * Der Feldtyp meldet einen ISO-Zeitpunkt mit `Z` oder Versatz; die
+     * Validierung und {@see Offers::fromDisplay()} erwarten eine Uhrzeit in der
+     * Anzeige-Zeitzone. Was schon in dieser Form ankommt (die Tests, jeder
+     * andere Client), bleibt unberuehrt.
+     */
+    protected function normaliseDates(Request $request): void
+    {
+        $zone = Offers::displayTimezone();
+        $merge = [];
+
+        foreach (['available_from', 'available_until', 'link_switch_at'] as $key) {
+            $value = $request->input($key);
+
+            if (is_string($value) && preg_match('/T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/', $value) === 1) {
+                $merge[$key] = Carbon::parse($value)->setTimezone($zone)->format('Y-m-d\TH:i');
+            }
+        }
+
+        $day = $request->input('access_starts_at');
+
+        if (is_string($day) && strlen($day) > 10 && preg_match('/^\d{4}-\d{2}-\d{2}T/', $day) === 1) {
+            $merge['access_starts_at'] = substr($day, 0, 10);
+        }
+
+        $request->merge($merge);
     }
 
     protected function json(FilteredRequest $request)

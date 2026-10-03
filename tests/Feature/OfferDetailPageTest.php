@@ -108,6 +108,45 @@ class OfferDetailPageTest extends TestCase
     }
 
     #[Test]
+    public function the_core_date_field_round_trips_through_the_display_timezone(): void
+    {
+        config(['statamic.system.display_timezone' => 'Europe/Berlin']);
+        $user = $this->user();
+
+        // Der `date`-Feldtyp schickt einen Zeitpunkt (ISO, UTC).
+        $this->actingAs($user)->post(cp_route('utilities.offers.store'), [
+            'name' => 'Datum', 'handle' => 'datum', 'product' => 'noten-paket',
+            'slot' => Offer::SLOT_STANDALONE, 'active' => true, 'amount_cent' => 500,
+            'available_from' => '2026-10-05T12:30:00.000Z',
+            'access_starts_at' => '2026-10-06T00:00:00.000Z',
+        ])->assertSessionHasNoErrors();
+
+        $offer = Offer::query()->where('handle', 'datum')->firstOrFail();
+
+        $this->assertSame('2026-10-05 12:30:00', $offer->available_from->utc()->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-10-06', $offer->access_starts_at->format('Y-m-d'));
+
+        // Und zurueck: derselbe Zeitpunkt, den die Seite dem Feldtyp gibt.
+        $page = $this->actingAs($user)->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
+            ->viewData('page')['props']['dates'];
+
+        $this->assertSame('2026-10-05T12:30:00.000Z', $page['values']['available_from']);
+        $this->assertSame('Europe/Berlin', $page['meta']['available_from']['timezone']);
+    }
+
+    #[Test]
+    public function an_unknown_offer_gets_the_control_panel_404_page(): void
+    {
+        $page = $this->actingAs($this->user())
+            ->get(cp_route('utilities.offers.show', ['offer' => 99999]))
+            ->assertNotFound()
+            ->viewData('page');
+
+        // Die 404-Seite des Control Panels, nicht die nackte Zeile des Handlers.
+        $this->assertSame('errors/404', $page['component']);
+    }
+
+    #[Test]
     public function the_pages_need_the_permission(): void
     {
         $offer = $this->offer();

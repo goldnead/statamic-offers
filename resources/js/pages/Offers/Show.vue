@@ -1,9 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
-import DateTimeField from '../../components/DateTimeField.vue';
+import DateField from '../../components/DateField.vue';
 import {
-    Header, Badge, DocsCallout, Button, CardPanel, ConfirmationModal,
+    Header, Badge, DocsCallout, Button, CardPanel, ConfirmationModal, PublishContainer,
     Dropdown, DropdownMenu, DropdownItem,
     Field, Input, Textarea, Select, Combobox, Switch, Alert,
     Subheading, Checkbox, CheckboxGroup,
@@ -23,6 +23,9 @@ import {
  */
 const props = defineProps({
     offer: { type: Object, default: null },
+    // Blueprint, Werte und Metadaten der vier Datumsfelder, die als `date`-
+    // Feldtyp des Kerns laufen. Siehe OffersController::dateFields().
+    dates: { type: Object, required: true },
     indexUrl: { type: String, required: true },
     storeUrl: { type: String, required: true },
     updateUrl: { type: String, default: null },
@@ -222,6 +225,22 @@ const errors = ref({});
 const editing = computed(() => props.offer);
 const form = ref({ ...blank(), ...(props.offer?.edit_values ?? {}) });
 
+/**
+ * Die Datumsfelder liegen im `PublishContainer`, nicht in `form`: der `date`-
+ * Feldtyp des Kerns haelt seinen eigenen Wert. Beim Speichern wandern sie in die
+ * Nutzlast; der Server rechnet sie in die Anzeige-Zeitzone um.
+ */
+const dateValues = ref({ ...props.dates.values });
+const dateFields = props.dates.blueprint.tabs[0].sections[0].fields;
+
+const payload = () => ({
+    ...form.value,
+    available_from: dateValues.value.available_from ?? null,
+    available_until: dateValues.value.available_until ?? null,
+    link_switch_at: form.value.link_fallback ? (dateValues.value.link_switch_at ?? null) : null,
+    access_starts_at: dateValues.value.access_starts_at ?? null,
+});
+
 const title = computed(() => (editing.value ? (form.value.name || editing.value.name) : props.t.new));
 
 const slotHelp = computed(() => props.slots.find((s) => s.value === form.value.slot)?.description ?? '');
@@ -373,7 +392,7 @@ function save() {
     const url = editing.value ? props.updateUrl : props.storeUrl;
     const method = editing.value ? 'patch' : 'post';
 
-    router[method](url, form.value, {
+    router[method](url, payload(), {
         preserveScroll: true,
         onError: (e) => { errors.value = e || {}; },
         onSuccess: () => { errors.value = {}; },
@@ -461,6 +480,17 @@ watch(errors, () => {
 
         <Alert v-if="errors.offer" variant="error" :text="errors.offer" class="mb-4" />
 
+        <!-- Der Container stellt den Kontext, den der `date`-Feldtyp braucht;
+             er umschliesst die ganze Seite, weil die Felder in Tabs und
+             Seitenspalte verteilt sitzen. -->
+        <PublishContainer
+            name="offers-dates"
+            :blueprint="dates.blueprint"
+            :meta="dates.meta"
+            :errors="errors"
+            :track-dirty-state="false"
+            v-model="dateValues"
+        >
         <Tabs v-model="activeTab">
             <TabList class="overflow-x-auto [&_button]:whitespace-nowrap">
                 <TabTrigger name="basics">
@@ -903,8 +933,12 @@ watch(errors, () => {
 
             <TabContent name="checkout">
                 <div class="space-y-4">
+                <!-- Eine Karte fuer alles, was die Kasse betrifft: vier Karten mit
+                     je einem oder zwei Feldern waeren vier Rahmen um fast nichts. -->
                 <CardPanel>
                 <div class="space-y-5">
+                <Subheading :text="t.section_checkout" />
+
                 <!-- Only offers placed at checkout can be carried, and never
                      this offer itself. The server refuses both again; this is
                      the half that stops somebody picking an impossible one. -->
@@ -923,16 +957,10 @@ watch(errors, () => {
                         clearable
                     />
                 </Field>
-                </div>
-                </CardPanel>
 
-                <CardPanel>
-                <div class="space-y-5">
                 <!-- Checkout fields: picks from the library in the config.
                      The library says what a field is; the offer only says
                      "ask for it". -->
-                <Subheading :text="t.section_checkout" />
-
                 <Field
                     :label="t.field_checkout_fields"
                     :instructions="checkoutFields.length ? t.field_checkout_fields_help : t.field_checkout_fields_empty"
@@ -947,12 +975,6 @@ watch(errors, () => {
                         />
                     </CheckboxGroup>
                 </Field>
-                </div>
-                </CardPanel>
-
-                <CardPanel>
-                <div class="space-y-5">
-                <Subheading :text="t.section_mail" />
 
                 <Field
                     :label="t.field_confirmation"
@@ -976,11 +998,7 @@ watch(errors, () => {
                         clearable
                     />
                 </Field>
-                </div>
-                </CardPanel>
 
-                <CardPanel>
-                <div class="space-y-5">
                 <!-- Wo verkauft wird. Durchgesetzt in der Kasse, gegen das
                      Land der Kaeuferin; hier steht nur die Regel. -->
                 <Field :label="t.field_country_mode" :error="errors.country_mode">
@@ -1013,9 +1031,7 @@ watch(errors, () => {
 
                 <div>
                     <div class="grid grid-cols-2 gap-4">
-                        <Field :label="t.field_access_starts_at" :error="errors.access_starts_at">
-                            <DateTimeField v-model="form.access_starts_at" />
-                        </Field>
+                        <DateField :fields="dateFields" handle="access_starts_at" />
 
                         <Field :label="t.field_access_days" :error="errors.access_days">
                             <Input v-model.number="form.access_days" type="number" min="1" />
@@ -1180,16 +1196,10 @@ watch(errors, () => {
                     <Input v-model.number="form.quantity_limit" type="number" min="1" :placeholder="t.availability_unlimited" />
                 </Field>
 
-                <!-- Core's DatePicker, wie jedes Datumsfeld im Control Panel.
-                     Sein Modell ist ein DateValue, kein String; `dateValue`
-                     und `fromDateValue` uebersetzen an dieser Naht. -->
-                <Field :label="t.field_available_from" :error="errors.available_from">
-                    <DateTimeField v-model="form.available_from" with-time />
-                </Field>
+                <!-- Statamics eigener `date`-Feldtyp, siehe `DateField.vue`. -->
+                <DateField :fields="dateFields" handle="available_from" />
 
-                <Field :label="t.field_available_until" :error="errors.available_until">
-                    <DateTimeField v-model="form.available_until" with-time />
-                </Field>
+                <DateField :fields="dateFields" handle="available_until" />
 
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                     {{ t.field_available_help }} {{ timezoneNote }}
@@ -1221,9 +1231,12 @@ watch(errors, () => {
                         <Input v-model="form.link_fallback" class="font-mono" placeholder="/warteliste" />
                     </Field>
 
-                    <Field :label="t.field_link_switch_at" :instructions="`${t.field_link_switch_at_help} ${timezoneNote}`" :error="errors.link_switch_at">
-                        <DateTimeField v-model="form.link_switch_at" with-time :disabled="!form.link_fallback" />
-                    </Field>
+                    <!-- Ohne Ausweichziel gibt es nichts umzuschalten, also auch
+                         kein Feld dafuer. -->
+                    <div v-if="form.link_fallback" class="space-y-2">
+                        <DateField :fields="dateFields" handle="link_switch_at" />
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t.field_link_switch_at_help }} {{ timezoneNote }}</p>
+                    </div>
 
                     <Field :label="t.field_link_switch_on_sold_out" :error="errors.link_switch_on_sold_out">
                         <Switch v-model="form.link_switch_on_sold_out" :disabled="!form.link_fallback" />
@@ -1263,6 +1276,7 @@ watch(errors, () => {
             </div>
             </div>
         </Tabs>
+        </PublishContainer>
 
         <ConfirmationModal
             :open="confirmingDelete"

@@ -1,12 +1,8 @@
 {
     "private": true,
     "type": "module",
-    "scripts": {
-        "build": "vite build",
-        "dev": "vite"
-    },
+    "scripts": { "build": "vite build", "dev": "vite" },
     "dependencies": {
-        "@internationalized/date": "^3.12.4",
         "@statamic/cms": "file:./vendor/statamic/cms/resources/dist-package"
     },
     "devDependencies": {

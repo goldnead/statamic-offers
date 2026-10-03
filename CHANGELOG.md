@@ -9,8 +9,9 @@
   right, delete is in the "…" menu next to it, and the many fields are grouped into the tabs
   Basics, Price, Checkout and Legal, with a side column that stays in view: active, handle,
   availability and short link. The new-offer page lives at `utilities/offers/new` (not
-  `/create`, which Statamic reads as a child of "Utilities" in the nav). Dates use core's date
-  picker with a time field beside it. The list column "Where" is now "Where it appears". Saving a new offer leads to its page, deleting
+  `/create`, which Statamic reads as a child of "Utilities" in the nav). Dates (sale from/until, access
+  from, short link switch) are core's own `date` field type, with its 24-hour time input.
+  An unknown offer shows the Control Panel's 404 page. The list column "Where" is now "Where it appears". Saving a new offer leads to its page, deleting
   leads back to the list. The list rows no longer carry the form payload (`edit_values`,
   `seat_pools`, `usage`, `short_link`); they carry `show_url` instead.
 - The field "Where" is now "Where it appears" (de: "Wo erscheint das Angebot") and explains all
