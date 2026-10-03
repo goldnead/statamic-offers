@@ -12,7 +12,7 @@ return [
     'column_name' => 'Angebot',
     'column_handle' => 'Kennung',
     'column_amount' => 'Preis',
-    'column_slot' => 'Ort',
+    'column_slot' => 'Wo erscheint das Angebot',
     'column_performance' => 'Angenommen',
     'column_active' => 'Aktiv',
     'column_confirmation' => 'Bestätigung',
@@ -66,7 +66,8 @@ return [
     'field_headline' => 'Überschrift',
     'field_body' => 'Text',
     'field_button' => 'Beschriftung der Schaltfläche',
-    'field_slot' => 'Ort',
+    'field_slot' => 'Wo erscheint das Angebot',
+    'field_slot_help' => 'Im Checkout: ein Häkchen im Bezahlvorgang, das mit dem Hauptkauf abgerechnet wird. Nach dem Kauf: ein eigenes Angebot, das nach erfolgreicher Zahlung folgt. Frei platzierbar: überall, wo eine Vorlage danach fragt.',
     'field_active' => 'Aktiv',
 
     'field_usage' => 'Was hier dranhängt',
@@ -98,7 +99,7 @@ return [
     // --- Bumps an einem Angebot --------------------------------------------
     'column_bumps' => 'Bumps',
     'field_bumps' => 'Bumps',
-    'field_bumps_help' => 'Angebote, die im Bezahlvorgang als Häkchen neben diesem stehen. Auswählbar sind nur Angebote am Ort „Im Checkout“, und die Reihenfolge der Auswahl ist die Reihenfolge der Anzeige.',
+    'field_bumps_help' => 'Hier wählst du Angebote und keine Produkte, weil ein Bump seinen eigenen Preis haben kann: dasselbe Produkt kostet als Bump etwas anderes als im Katalog, und das legt das Angebot fest. Gewählt werden Angebote am Ort „Im Checkout“. Sie erscheinen als Häkchen neben diesem Angebot, in der Reihenfolge deiner Auswahl.',
     'field_bumps_placeholder' => 'Angebote wählen',
     'field_bumps_empty' => 'Es gibt noch kein Angebot am Ort „Im Checkout“. Lege eines an und setze seinen Ort auf „Im Checkout“, dann steht es hier zur Wahl.',
     'field_bumps_invalid' => 'Jeder Bump muss ein vorhandenes Angebot am Ort „Im Checkout“ sein, und nie dieses Angebot selbst.',
@@ -162,6 +163,12 @@ return [
     'no' => 'Nein',
 
     // Abschnitte im Formular
+    'tab_basics' => 'Grundlagen',
+    'tab_price' => 'Preis',
+    'tab_checkout' => 'Checkout',
+    'tab_legal' => 'Recht',
+    'tab_visibility' => 'Sichtbarkeit',
+    'tab_has_errors' => 'Dieser Tab enthält Fehler',
     'section_price' => 'Preis',
     'section_availability' => 'Verfügbarkeit',
     'section_access' => 'Zugang',

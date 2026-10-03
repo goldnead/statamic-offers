@@ -57,7 +57,8 @@ class DisplayTimezoneTest extends TestCase
         $this->assertSame('2026-10-31 22:59:00', $offer->available_until->utc()->format('Y-m-d H:i:s'));
 
         // Zurueck ins Formular in derselben Anzeige-Zeit, die getippt wurde.
-        $werte = collect($this->getJson(cp_route('utilities.offers'))->json('data'))->firstWhere('handle', 'herbst')['edit_values'];
+        $werte = $this->actingAs($user)->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
+            ->assertOk()->viewData('page')['props']['offer']['edit_values'];
 
         $this->assertSame('2026-10-15T18:00', $werte['link_switch_at']);
         $this->assertSame('2026-10-01T09:00', $werte['available_from']);
@@ -90,7 +91,7 @@ class DisplayTimezoneTest extends TestCase
     {
         $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
 
-        $html = html_entity_decode((string) $this->actingAs($user)->get(cp_route('utilities.offers'))->assertOk()->getContent());
+        $html = html_entity_decode((string) $this->actingAs($user)->get(cp_route('utilities.offers.create'))->assertOk()->getContent());
 
         // Die Eigenschaft der Seite, nicht irgendein Vorkommen im HTML.
         $this->assertMatchesRegularExpression('#"timezone":"Europe\\\\/Berlin"#', $html);

@@ -45,17 +45,6 @@ class ListedOffer extends JsonResource
                 ? __('statamic-offers::messages.price_from', ['amount' => $this->money($this->effectiveAmountCent())])
                 : $this->money($this->effectiveAmountCent()),
             'pay_what_you_want' => $this->resource->isPayWhatYouWant(),
-            // Der Kurzlink, fertig gebaut, mit den Zaehlern und dem Ziel, zu
-            // dem er gerade fuehrt. Null ohne Link.
-            'short_link' => $this->shortLink(),
-            // Die Kontingente dieses Angebots, fuer den Abschnitt „Plaetze" im
-            // Formular. Nur bei einem Angebot mit Plaetzen, und die neuesten 50:
-            // ein Angebot mit tausend Gruppenkaeufen gehoert in einen eigenen
-            // Bildschirm, nicht in eine Zeile der Liste.
-            'seat_pools' => $this->seatPools(),
-            // Plaetze fuer ein Produkt ohne Zugang: angenommen, und niemand
-            // kommt irgendwo hinein. Das Formular sagt es, bevor verkauft wird.
-            'seats_grant_nothing' => $this->resource->seatCount() !== null && SeatPools::grantsOf($this->resource) === [],
             'currency' => $this->currency(),
             'compare_at' => $this->money($this->effectiveCompareAtCent()),
             'own_price' => $this->amount_cent !== null,
@@ -69,9 +58,6 @@ class ListedOffer extends JsonResource
             // tables are not there to be asked. The column itself is dropped
             // in that case, so null never reaches the screen as "0".
             'revenue' => OfferSales::available() ? $this->money(OfferSales::revenueCent($this->resource) ?? 0) : null,
-            // Shown in the form so a change in the wording is visibly a new
-            // version. The hash, not the text: the text is what the form edits.
-            'withdrawal_version' => $this->withdrawalTerms()['version'],
             'slot' => $this->slot,
             'slot_label' => __('statamic-offers::messages.slot_'.$this->slot),
             // A count, not a list: the column has one line and a row carrying
@@ -94,6 +80,34 @@ class ListedOffer extends JsonResource
             'conversion' => $this->shown_count > 0
                 ? CpNumber::decimal($this->accepted_count / $this->shown_count * 100, 1)
                 : null,
+            'show_url' => cp_route('utilities.offers.show', ['offer' => $this->id]),
+        ];
+    }
+
+    /**
+     * What only the detail page needs: the form's values, what hangs on the
+     * offer, the sold seat pools and the short link. Kept off the listing row,
+     * where it cost a query per row for columns nobody reads there.
+     *
+     * @return array<string, mixed>
+     */
+    public function detail(): array
+    {
+        return [
+            // Der Kurzlink, fertig gebaut, mit den Zaehlern und dem Ziel, zu
+            // dem er gerade fuehrt. Null ohne Link.
+            'short_link' => $this->shortLink(),
+            // Die Kontingente dieses Angebots, fuer den Abschnitt „Plaetze" im
+            // Formular. Nur bei einem Angebot mit Plaetzen, und die neuesten 50:
+            // ein Angebot mit tausend Gruppenkaeufen gehoert in einen eigenen
+            // Bildschirm, nicht in eine Zeile der Liste.
+            'seat_pools' => $this->seatPools(),
+            // Plaetze fuer ein Produkt ohne Zugang: angenommen, und niemand
+            // kommt irgendwo hinein. Das Formular sagt es, bevor verkauft wird.
+            'seats_grant_nothing' => $this->resource->seatCount() !== null && SeatPools::grantsOf($this->resource) === [],
+            // Shown in the form so a change in the wording is visibly a new
+            // version. The hash, not the text: the text is what the form edits.
+            'withdrawal_version' => $this->withdrawalTerms()['version'],
             // Was an diesem Angebot haengt. Am Zeilen-Objekt und nicht als
             // eigener Abruf, damit das Formular es beim Aufklappen schon hat —
             // ein Kaestchen, das erst nachlaedt, ist eins, das im Zweifel leer

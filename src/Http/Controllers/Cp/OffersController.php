@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers\Http\Controllers\Cp;
 
+use Goldnead\StatamicOffers\Http\Resources\Cp\ListedOffer;
 use Goldnead\StatamicOffers\Http\Resources\Cp\OffersCollection;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
 use Inertia\Inertia;
+use Statamic\Facades\Blueprint;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Dictionary;
 use Statamic\Facades\Entry;
@@ -62,10 +64,70 @@ class OffersController extends CpController
 
         return Inertia::render('statamic-offers::Offers/Index', [
             'listingUrl' => cp_route('utilities.offers'),
+            'createUrl' => cp_route('utilities.offers.create'),
             'storeUrl' => cp_route('utilities.offers.store'),
             'sortColumn' => 'name',
             'sortDirection' => 'asc',
             'hasAny' => Offer::query()->forBrand()->exists(),
+            // The slot filter, which is what turns this listing into an
+            // upsell overview without a second screen.
+            'filters' => Scope::filters(self::SCOPE, ['scope' => self::SCOPE]),
+            't' => $this->strings(),
+        ]);
+    }
+
+    /**
+     * A new offer. Its own page, because there is no record yet for a detail
+     * page to stand on; saving leads to the detail page of what was made.
+     */
+    public function create()
+    {
+        $this->authorizeAccess();
+
+        if ($setup = Setup::guard(__('statamic-offers::messages.utility_nav'), 'offers')) {
+            return $setup;
+        }
+
+        return $this->page(null);
+    }
+
+    /**
+     * The detail page of one offer, and the form at once: the way a collection
+     * entry's page is. Editing has no stack and no second route.
+     */
+    public function show(string $offer)
+    {
+        $this->authorizeAccess();
+
+        if ($setup = Setup::guard(__('statamic-offers::messages.utility_nav'), 'offers')) {
+            return $setup;
+        }
+
+        // `pageNotFound()` ist die 404-Seite des Control Panels, mit Navigation.
+        // Eine Exception haette die nackte Zeile des Laravel-Handlers gegeben.
+        // Der Zweig ist derselbe fuer „gibt es nicht" und „gehoert einer anderen
+        // Marke": mehr verraet die Antwort nicht.
+        $model = Offer::query()->forBrand()->find($offer);
+
+        return $model === null ? $this->pageNotFound() : $this->page($model);
+    }
+
+    protected function page(?Offer $offer)
+    {
+        $detail = $offer === null ? null : (new ListedOffer($offer))->detail();
+
+        return Inertia::render('statamic-offers::Offers/Show', [
+            'offer' => $offer === null ? null : [
+                'id' => $offer->id,
+                'name' => $offer->name,
+                'sellable' => $offer->isSellable(),
+                ...$detail,
+            ],
+            'dates' => $this->dateFields($detail['edit_values'] ?? []),
+            'indexUrl' => cp_route('utilities.offers'),
+            'storeUrl' => cp_route('utilities.offers.store'),
+            'updateUrl' => $offer === null ? null : cp_route('utilities.offers.update', ['offer' => $offer->id]),
+            'deleteUrl' => $offer === null ? null : cp_route('utilities.offers.destroy', ['offer' => $offer->id]),
             // What may be sold. Offered as a list rather than a free text field
             // because an offer pointing at a product nobody configured is the
             // single most likely way to build one that cannot be bought.
@@ -90,9 +152,6 @@ class OffersController extends CpController
             // uses that emptiness to hide the "own mail" choice altogether
             // rather than offering a picker with nothing in it.
             'confirmationTemplates' => $this->confirmationTemplates(),
-            // The slot filter, which is what turns this listing into an
-            // upsell overview without a second screen.
-            'filters' => Scope::filters(self::SCOPE, ['scope' => self::SCOPE]),
             // The checkout field library, for the multi-select. Keys and
             // labels only; the form never decides what a field *is*.
             'checkoutFields' => collect(Offers::fieldLibrary())->map(fn (array $field) => [
@@ -116,9 +175,6 @@ class OffersController extends CpController
             // Was vor dem Slug eines Kurzlinks steht, damit das Formular die
             // ganze Adresse zeigt, waehrend jemand den Slug tippt.
             'linkBase' => Offers::publicUrl(Offers::linkPrefix()).'/',
-            // Every label on the screen, translated here rather than in the
-            // template. See the coupons screen for the reasoning; the two are
-            // built the same way on purpose.
             't' => $this->strings(),
         ]);
     }
@@ -133,7 +189,7 @@ class OffersController extends CpController
         // eine, die spaeter etwas lernt, und die andere, die es nicht tut.
         $offer = Offer::create($this->validated($request));
 
-        return back()->with('message', __('statamic-offers::messages.saved', ['name' => $offer->name]));
+        return redirect(cp_route('utilities.offers.show', ['offer' => $offer->id]))->with('message', __('statamic-offers::messages.saved', ['name' => $offer->name]));
     }
 
     public function update(Request $request, string $offer)
@@ -157,7 +213,7 @@ class OffersController extends CpController
         // keep contributing to a conversion report.
         $offer->delete();
 
-        return back()->with('message', __('statamic-offers::messages.deleted'));
+        return redirect(cp_route('utilities.offers'))->with('message', __('statamic-offers::messages.deleted'));
     }
 
     /**
@@ -165,6 +221,8 @@ class OffersController extends CpController
      */
     protected function validated(Request $request, ?Offer $offer = null): array
     {
+        $this->normaliseDates($request);
+
         $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:191'],
             'handle' => [
@@ -732,6 +790,105 @@ class OffersController extends CpController
         return Offer::query()->forBrand()->findOrFail($id);
     }
 
+    /**
+     * Die vier Datumsfelder als Felder des Kerns.
+     *
+     * Datum und Uhrzeit sind Statamics eigener `date`-Feldtyp, in einem
+     * `PublishContainer` gefahren (wie die Dateiauswahl im Lead-Magnets-Addon):
+     * dasselbe Feldbild, dieselbe 24-Stunden-Eingabe und kein zweiter
+     * Datumsbaustein im Bundle. Gespeichert wird weiter ein String in der
+     * Anzeige-Zeitzone; umgepackt wird an dieser Naht, hin hier, zurueck im
+     * Formular.
+     *
+     * @param  array<string, mixed>  $values  `edit_values` des Angebots
+     * @return array{blueprint: array<string, mixed>, values: array<string, mixed>, meta: array<string, mixed>}
+     */
+    protected function dateFields(array $values): array
+    {
+        $field = fn (string $label, bool $time) => [
+            'type' => 'date',
+            'display' => __('statamic-offers::messages.'.$label),
+            'mode' => 'single',
+            'time_enabled' => $time,
+            'inline' => false,
+        ];
+
+        $blueprint = Blueprint::makeFromFields([
+            'available_from' => $field('field_available_from', true),
+            'available_until' => $field('field_available_until', true),
+            'link_switch_at' => $field('field_link_switch_at', true),
+            'access_starts_at' => $field('field_access_starts_at', false),
+        ]);
+
+        // Der Feldtyp haelt einen Zeitpunkt (ISO, UTC) und zeigt ihn in der
+        // Zeitzone, die ihm sein Meta nennt: der Anzeige-Zeitzone. Gespeichert
+        // ist hier eine Uhrzeit in ihr, ohne Zone; also erst in einen Zeitpunkt
+        // umrechnen. Ein Tag ohne Uhrzeit bleibt ein Tag.
+        $zone = Offers::displayTimezone();
+
+        $instant = function (string $key, bool $time) use ($values, $zone): ?string {
+            $value = $values[$key] ?? null;
+
+            if (blank($value)) {
+                return null;
+            }
+
+            return $time
+                ? Carbon::parse((string) $value, $zone)->utc()->format('Y-m-d\TH:i:s.000\Z')
+                : Carbon::parse(Carbon::parse((string) $value)->format('Y-m-d'), $zone)->utc()->format('Y-m-d\TH:i:s.000\Z');
+        };
+
+        $fields = $blueprint->fields()->addValues([
+            'available_from' => $instant('available_from', true),
+            'available_until' => $instant('available_until', true),
+            'link_switch_at' => $instant('link_switch_at', true),
+            'access_starts_at' => $instant('access_starts_at', false),
+        ]);
+
+        return [
+            'blueprint' => $blueprint->toPublishArray(),
+            'values' => $fields->values()->all(),
+            'meta' => collect($fields->meta()->all())
+                ->map(fn ($meta) => array_merge((array) $meta, ['timezone' => $zone]))
+                ->all(),
+        ];
+    }
+
+    /**
+     * Die Datumsfelder, wie der `date`-Feldtyp sie schickt, in das Format, das
+     * der Rest dieses Controllers liest.
+     *
+     * Der Feldtyp meldet einen ISO-Zeitpunkt mit `Z` oder Versatz; die
+     * Validierung und {@see Offers::fromDisplay()} erwarten eine Uhrzeit in der
+     * Anzeige-Zeitzone. Was schon in dieser Form ankommt (die Tests, jeder
+     * andere Client), bleibt unberuehrt.
+     */
+    protected function normaliseDates(Request $request): void
+    {
+        $zone = Offers::displayTimezone();
+        $merge = [];
+
+        foreach (['available_from', 'available_until', 'link_switch_at'] as $key) {
+            $value = $request->input($key);
+
+            if (is_string($value) && preg_match('/T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/', $value) === 1) {
+                $merge[$key] = Carbon::parse($value)->setTimezone($zone)->format('Y-m-d\TH:i');
+            }
+        }
+
+        // Ein Tag ohne Uhrzeit kommt als die Mitternacht dieses Tages in der
+        // Anzeige-Zeitzone, als UTC-Zeitpunkt: der 6.10. in Berlin ist
+        // …T22:00:00.000Z. Erst umrechnen, dann den Tag ablesen; die ersten
+        // zehn Zeichen waeren der Tag davor.
+        $day = $request->input('access_starts_at');
+
+        if (is_string($day) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/', $day) === 1) {
+            $merge['access_starts_at'] = Carbon::parse($day)->setTimezone($zone)->format('Y-m-d');
+        }
+
+        $request->merge($merge);
+    }
+
     protected function json(FilteredRequest $request)
     {
         $query = Offer::query()->forBrand();
@@ -1058,6 +1215,13 @@ class OffersController extends CpController
             'locale' => str_replace('_', '-', (string) app()->getLocale()),
             'yes' => __('statamic-offers::messages.yes'),
             'no' => __('statamic-offers::messages.no'),
+            'tab_basics' => __('statamic-offers::messages.tab_basics'),
+            'tab_price' => __('statamic-offers::messages.tab_price'),
+            'tab_checkout' => __('statamic-offers::messages.tab_checkout'),
+            'tab_legal' => __('statamic-offers::messages.tab_legal'),
+            'tab_visibility' => __('statamic-offers::messages.tab_visibility'),
+            'tab_has_errors' => __('statamic-offers::messages.tab_has_errors'),
+            'field_slot_help' => __('statamic-offers::messages.field_slot_help'),
             'save' => __('Save'),
             'cancel' => __('Cancel'),
             'edit_action' => __('Edit'),

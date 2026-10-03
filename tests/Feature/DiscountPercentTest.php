@@ -144,13 +144,20 @@ class DiscountPercentTest extends TestCase
     #[Test]
     public function the_listing_shows_the_derived_compare_at_price(): void
     {
-        $this->offer(['discount_percent' => 20]);
+        $offer = $this->offer(['discount_percent' => 20]);
 
         $row = collect($this->actingAs($this->user())->getJson('/cp/utilities/offers')->json('data'))
             ->firstWhere('handle', 'rabatt');
 
         $this->assertSame(20, $row['discount_percent']);
         $this->assertNotNull($row['compare_at']);
-        $this->assertNull($row['edit_values']['compare_at_cent']);
+
+        // Das Formular der Detailseite bekommt den abgeleiteten Statt-Preis nicht
+        // als eigenen Wert, sonst wuerde das naechste Speichern ihn festschreiben.
+        $values = $this->actingAs($this->user())
+            ->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
+            ->viewData('page')['props']['offer']['edit_values'];
+
+        $this->assertNull($values['compare_at_cent']);
     }
 }

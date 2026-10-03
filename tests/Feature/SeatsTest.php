@@ -369,8 +369,8 @@ class SeatsTest extends TestCase
         $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
         Mail::fake();
 
-        $row = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))
-            ->firstWhere('handle', 'stimmgruppe');
+        $this->actingAs($user);
+        $row = $this->offerPage(Offer::query()->where('handle', 'stimmgruppe')->firstOrFail());
 
         $this->assertSame('leitung@chor.example', $row['seat_pools'][0]['owner_email']);
         $this->assertSame(2, $row['seat_pools'][0]['taken']);
@@ -444,8 +444,7 @@ class SeatsTest extends TestCase
         app(Refunds::class)->record($payment->fresh(), $payment->amount_cent, 're_1');
         $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
 
-        $karte = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))
-            ->firstWhere('handle', 'stimmgruppe')['seat_pools'][0];
+        $karte = $this->actingAs($user)->offerPage(Offer::query()->where('handle', 'stimmgruppe')->firstOrFail())['seat_pools'][0];
 
         $this->assertTrue($karte['closed']);
         $this->assertNotNull($karte['closed_at']);
@@ -460,7 +459,7 @@ class SeatsTest extends TestCase
         $this->offer(['handle' => 'leer', 'product' => 'ohne']);
         $user = tap(User::make()->email('studio@example.com')->makeSuper())->save();
 
-        $zeile = collect($this->actingAs($user)->getJson(cp_route('utilities.offers'))->json('data'))->firstWhere('handle', 'leer');
+        $zeile = $this->actingAs($user)->offerPage(Offer::query()->where('handle', 'leer')->firstOrFail());
         $this->assertTrue($zeile['seats_grant_nothing']);
 
         Log::spy();
