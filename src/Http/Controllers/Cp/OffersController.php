@@ -835,7 +835,7 @@ class OffersController extends CpController
 
             return $time
                 ? Carbon::parse((string) $value, $zone)->utc()->format('Y-m-d\TH:i:s.000\Z')
-                : Carbon::parse((string) $value)->format('Y-m-d').'T00:00:00.000Z';
+                : Carbon::parse(Carbon::parse((string) $value)->format('Y-m-d'), $zone)->utc()->format('Y-m-d\TH:i:s.000\Z');
         };
 
         $fields = $blueprint->fields()->addValues([
@@ -876,10 +876,14 @@ class OffersController extends CpController
             }
         }
 
+        // Ein Tag ohne Uhrzeit kommt als die Mitternacht dieses Tages in der
+        // Anzeige-Zeitzone, als UTC-Zeitpunkt: der 6.10. in Berlin ist
+        // …T22:00:00.000Z. Erst umrechnen, dann den Tag ablesen; die ersten
+        // zehn Zeichen waeren der Tag davor.
         $day = $request->input('access_starts_at');
 
-        if (is_string($day) && strlen($day) > 10 && preg_match('/^\d{4}-\d{2}-\d{2}T/', $day) === 1) {
-            $merge['access_starts_at'] = substr($day, 0, 10);
+        if (is_string($day) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}.*(Z|[+-]\d{2}:?\d{2})$/', $day) === 1) {
+            $merge['access_starts_at'] = Carbon::parse($day)->setTimezone($zone)->format('Y-m-d');
         }
 
         $request->merge($merge);

@@ -4,7 +4,10 @@ namespace Goldnead\StatamicOffers\Tests\Feature;
 
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Tests\TestCase;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Role;
 use Statamic\Facades\User;
@@ -132,6 +135,90 @@ class OfferDetailPageTest extends TestCase
 
         $this->assertSame('2026-10-05T12:30:00.000Z', $page['values']['available_from']);
         $this->assertSame('Europe/Berlin', $page['meta']['available_from']['timezone']);
+    }
+
+    /**
+     * Was die Oberflaeche in Berlin schickt, wenn jemand einen Tag waehlt: die
+     * Berliner Mitternacht, als UTC-Zeitpunkt. Der 6.10. ist …T22:00Z (Sommer),
+     * der 6.12. …T23:00Z (Winter). Der Tag davor, ablesen ohne Umrechnen, ist
+     * der Fehler.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function berlinMidnights(): array
+    {
+        return [
+            'summer' => ['2026-10-05T22:00:00.000Z', '2026-10-06'],
+            'winter' => ['2026-12-05T23:00:00.000Z', '2026-12-06'],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('berlinMidnights')]
+    public function the_access_day_is_the_day_picked_in_the_display_timezone(string $sent, string $day): void
+    {
+        config(['statamic.system.display_timezone' => 'Europe/Berlin']);
+
+        $this->actingAs($this->user())->post(cp_route('utilities.offers.store'), [
+            'name' => 'Tag', 'handle' => 'tag', 'product' => 'noten-paket',
+            'slot' => Offer::SLOT_STANDALONE, 'active' => true, 'amount_cent' => 500,
+            'access_starts_at' => $sent,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($day, Offer::query()->where('handle', 'tag')->firstOrFail()->access_starts_at->format('Y-m-d'));
+    }
+
+    /**
+     * Speichern, ohne etwas zu aendern, aendert nichts: die Seite liefert die
+     * Werte so aus, wie sie sie zurueckbekommt.
+     *
+     * @return array<string, array{0: string}>
+     */
+    public static function applicationTimezones(): array
+    {
+        return ['UTC' => ['UTC'], 'Berlin' => ['Europe/Berlin']];
+    }
+
+    #[Test]
+    #[DataProvider('applicationTimezones')]
+    public function sending_back_what_the_page_delivers_changes_nothing(string $appZone): void
+    {
+        $before = date_default_timezone_get();
+        date_default_timezone_set($appZone);
+
+        try {
+            config(['app.timezone' => $appZone, 'statamic.system.display_timezone' => 'Europe/Berlin']);
+
+            $offer = Offer::create([
+                'name' => 'Rund', 'handle' => 'rund', 'product' => 'noten-paket', 'amount_cent' => 500,
+                'slot' => Offer::SLOT_STANDALONE, 'active' => true,
+                'available_from' => Carbon::parse('2026-10-05 09:30', 'Europe/Berlin')->setTimezone($appZone),
+                'available_until' => Carbon::parse('2026-12-24 18:00', 'Europe/Berlin')->setTimezone($appZone),
+                'link_slug' => 'rund', 'link_target' => '/rund', 'link_fallback' => '/warten',
+                'link_switch_at' => Carbon::parse('2026-11-01 12:15', 'Europe/Berlin')->setTimezone($appZone),
+                'access_starts_at' => '2026-10-06',
+            ]);
+
+            $columns = ['available_from', 'available_until', 'link_switch_at', 'access_starts_at'];
+            $stored = fn () => (array) DB::table('offers')->where('id', $offer->id)->first($columns);
+            $original = $stored();
+
+            $props = $this->actingAs($this->user())
+                ->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
+                ->viewData('page')['props'];
+
+            // Genau die Nutzlast der Seite: das Formular plus die Datumsfelder
+            // des Feldtyps, wie er sie haelt.
+            $payload = array_merge($props['offer']['edit_values'], array_intersect_key($props['dates']['values'], array_flip($columns)));
+
+            $this->actingAs($this->user())
+                ->patch(cp_route('utilities.offers.update', ['offer' => $offer->id]), $payload)
+                ->assertSessionHasNoErrors();
+
+            $this->assertSame($original, $stored());
+        } finally {
+            date_default_timezone_set($before);
+        }
     }
 
     #[Test]
