@@ -67,6 +67,15 @@ class OfferDetailPageTest extends TestCase
     }
 
     #[Test]
+    public function the_create_page_does_not_end_on_create(): void
+    {
+        // Statamic marks the parent nav item ("Hilfsmittel") for any URL that
+        // ends on /create or /edit, so the page would not light up "Angebote".
+        $this->assertStringEndsNotWith('/create', cp_route('utilities.offers.create'));
+        $this->assertStringEndsNotWith('/edit', cp_route('utilities.offers.create'));
+    }
+
+    #[Test]
     public function a_row_in_the_list_leads_to_the_page_and_carries_no_form_payload(): void
     {
         $offer = $this->offer();

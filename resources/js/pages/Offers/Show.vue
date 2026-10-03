@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { Head, router } from '@statamic/cms/inertia';
+import DateTimeField from '../../components/DateTimeField.vue';
 import {
-    Header, Badge, DocsCallout, Button, Card, ConfirmationModal,
+    Header, Badge, DocsCallout, Button, CardPanel, ConfirmationModal,
     Dropdown, DropdownMenu, DropdownItem,
     Field, Input, Textarea, Select, Combobox, Switch, Alert,
     Subheading, Checkbox, CheckboxGroup,
@@ -400,7 +401,7 @@ function confirmRemove() {
  * Tab, und der erste Tab mit einem Fehler oeffnet sich nach dem Speichern.
  */
 const TAB_FIELDS = {
-    basics: ['name', 'handle', 'product', 'products', 'slot', 'headline', 'body', 'button_label', 'image', 'offer'],
+    basics: ['name', 'product', 'products', 'slot', 'headline', 'body', 'button_label', 'image', 'offer'],
     price: [
         'price_mode', 'pwyw_min_cent', 'pwyw_suggested_cent', 'pwyw_max_cent', 'pwyw_thanks', 'amount_cent',
         'compare_at_cent', 'discount_percent', 'currency', 'interval', 'times', 'trial_days', 'trial_amount_cent',
@@ -408,15 +409,11 @@ const TAB_FIELDS = {
     ],
     checkout: [
         'bumps', 'checkout_fields', 'confirmation_mode', 'confirmation_template',
-        'access_starts_at', 'access_days', 'seats',
+        'access_starts_at', 'access_days', 'seats', 'country_mode', 'countries',
     ],
     legal: [
         'withdrawal_days', 'withdrawal_text', 'withdrawal_waiver_text', 'withdrawal_checkbox_required',
         'withdrawal_b2b_text', 'withdrawal_pdf',
-    ],
-    visibility: [
-        'active', 'quantity_limit', 'available_from', 'available_until', 'country_mode', 'countries',
-        'link_slug', 'link_target', 'link_fallback', 'link_switch_at', 'link_switch_on_sold_out',
     ],
 };
 
@@ -482,21 +479,20 @@ watch(errors, () => {
                     {{ t.tab_legal }}
                     <Badge v-if="tabsWithErrors.has('legal')" color="red" pill class="ms-1.5" text="!" :aria-label="t.tab_has_errors" />
                 </TabTrigger>
-                <TabTrigger name="visibility">
-                    {{ t.tab_visibility }}
-                    <Badge v-if="tabsWithErrors.has('visibility')" color="red" pill class="ms-1.5" text="!" :aria-label="t.tab_has_errors" />
-                </TabTrigger>
             </TabList>
 
+            <!-- Wie beim Entry: links die Tabs, rechts die Seitenspalte, die
+                 bei jedem Tab stehen bleibt. Ein Raster statt `flex`, damit
+                 nur eine Regel dazukommt und keine gegen core's Stylesheet
+                 gewinnen muss. Felder werden nie breiter als 1180 px. -->
+            <div class="mt-4 grid max-w-[1180px] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div class="min-w-0">
             <TabContent name="basics">
-                <div class="mt-4 space-y-4">
-                <Card class="space-y-5">
+                <div class="space-y-4">
+                <CardPanel>
+                <div class="space-y-5">
                 <Field :label="t.field_name" :instructions="t.field_name_help" :error="errors.name" required>
                     <Input v-model="form.name" />
-                </Field>
-
-                <Field :label="t.field_handle" :instructions="t.field_handle_help" :error="errors.handle" required>
-                    <Input v-model="form.handle" class="font-mono" @update:model-value="handleTouched = true" />
                 </Field>
 
                 <Field :label="t.field_product" :instructions="t.field_product_help" :error="errors.product" required>
@@ -540,9 +536,11 @@ watch(errors, () => {
                 <Field :label="t.field_image" :instructions="t.field_image_help" :error="errors.image">
                     <Input v-model="form.image" />
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
 
-                <Card class="space-y-5">
+                <CardPanel>
+                <div class="space-y-5">
                 <!--
                     Was an diesem Angebot haengt. Auch — und gerade — wenn
                     nichts daran haengt: ein fehlendes Kaestchen liest sich wie
@@ -570,13 +568,15 @@ watch(errors, () => {
                         </template>
                     </div>
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
                 </div>
             </TabContent>
 
             <TabContent name="price">
-                <div class="mt-4 space-y-4">
-                <Card class="space-y-5">
+                <div class="space-y-4">
+                <CardPanel>
+                <div class="space-y-5">
 
                 <Field :label="t.field_price_mode" :instructions="t.field_price_mode_help" :error="errors.price_mode">
                     <Select v-model="form.price_mode" :options="priceModes" />
@@ -896,13 +896,15 @@ watch(errors, () => {
                         @update:model-value="percentChanged($event === '' ? null : Number($event))"
                     />
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
                 </div>
             </TabContent>
 
             <TabContent name="checkout">
-                <div class="mt-4 space-y-4">
-                <Card class="space-y-5">
+                <div class="space-y-4">
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Only offers placed at checkout can be carried, and never
                      this offer itself. The server refuses both again; this is
                      the half that stops somebody picking an impossible one. -->
@@ -921,9 +923,11 @@ watch(errors, () => {
                         clearable
                     />
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
 
-                <Card class="space-y-5">
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Checkout fields: picks from the library in the config.
                      The library says what a field is; the offer only says
                      "ask for it". -->
@@ -943,9 +947,11 @@ watch(errors, () => {
                         />
                     </CheckboxGroup>
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
 
-                <Card class="space-y-5">
+                <CardPanel>
+                <div class="space-y-5">
                 <Subheading :text="t.section_mail" />
 
                 <Field
@@ -970,9 +976,37 @@ watch(errors, () => {
                         clearable
                     />
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
 
-                <Card class="space-y-5">
+                <CardPanel>
+                <div class="space-y-5">
+                <!-- Wo verkauft wird. Durchgesetzt in der Kasse, gegen das
+                     Land der Kaeuferin; hier steht nur die Regel. -->
+                <Field :label="t.field_country_mode" :error="errors.country_mode">
+                    <Select v-model="form.country_mode" :options="countryModes" />
+                </Field>
+
+                <Field
+                    v-if="form.country_mode !== 'all'"
+                    :label="t.field_countries"
+                    :instructions="t.field_countries_help"
+                    :error="countriesError"
+                >
+                    <Combobox
+                        v-model="form.countries"
+                        :options="countries"
+                        :placeholder="t.field_countries_placeholder"
+                        multiple
+                        searchable
+                        clearable
+                    />
+                </Field>
+                </div>
+                </CardPanel>
+
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Access. Handed to the payment; the entitlements addon
                      turns it into starts_at / expires_at. -->
                 <Subheading :text="t.section_access" />
@@ -980,7 +1014,7 @@ watch(errors, () => {
                 <div>
                     <div class="grid grid-cols-2 gap-4">
                         <Field :label="t.field_access_starts_at" :error="errors.access_starts_at">
-                            <Input v-model="form.access_starts_at" type="date" />
+                            <DateTimeField v-model="form.access_starts_at" />
                         </Field>
 
                         <Field :label="t.field_access_days" :error="errors.access_days">
@@ -1056,13 +1090,15 @@ watch(errors, () => {
                         </ul>
                     </div>
                 </div>
-                </Card>
+                </div>
+                </CardPanel>
                 </div>
             </TabContent>
 
             <TabContent name="legal">
-                <div class="mt-4 space-y-4">
-                <Card class="space-y-5">
+                <div class="space-y-4">
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Withdrawal. Every empty field inherits the config, shown
                      as the placeholder. What a buyer agrees to is frozen on
                      the payment together with the version below, so a text
@@ -1104,17 +1140,38 @@ watch(errors, () => {
                 <Field v-if="editing" :label="t.withdrawal_version" :instructions="t.withdrawal_version_help">
                     <span class="font-mono text-xs">{{ editing.withdrawal_version }}</span>
                 </Field>
-                </Card>
+                </div>
+                </CardPanel>
                 </div>
             </TabContent>
 
-            <TabContent name="visibility">
-                <div class="mt-4 space-y-4">
-                <Card class="space-y-5">
+            </div>
+
+            <!--
+                Die Seitenspalte wie beim Collection-Entry: immer sichtbar,
+                egal welcher Tab offen ist. Hier steht, was ueber den Zustand
+                des Angebots entscheidet: aktiv, Kennung, Verfuegbarkeit und
+                Kurzlink.
+            -->
+            <div class="space-y-4">
+                <CardPanel>
+                <div class="space-y-5">
                 <Field :label="t.field_active">
                     <Switch v-model="form.active" />
                 </Field>
+                </div>
+                </CardPanel>
 
+                <CardPanel>
+                <div class="space-y-5">
+                <Field :label="t.field_handle" :instructions="t.field_handle_help" :error="errors.handle" required>
+                    <Input v-model="form.handle" class="font-mono" @update:model-value="handleTouched = true" />
+                </Field>
+                </div>
+                </CardPanel>
+
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Scarcity. On the offer and not on the funnel step: the
                      same offer through two funnels is one limit, not two. -->
                 <Subheading :text="t.section_availability" />
@@ -1123,48 +1180,25 @@ watch(errors, () => {
                     <Input v-model.number="form.quantity_limit" type="number" min="1" :placeholder="t.availability_unlimited" />
                 </Field>
 
-                <!-- Plain date-time inputs; see the coupons screen for why not
-                     core's DatePicker. -->
-                <div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <Field :label="t.field_available_from" :error="errors.available_from">
-                            <Input v-model="form.available_from" type="datetime-local" />
-                        </Field>
+                <!-- Core's DatePicker, wie jedes Datumsfeld im Control Panel.
+                     Sein Modell ist ein DateValue, kein String; `dateValue`
+                     und `fromDateValue` uebersetzen an dieser Naht. -->
+                <Field :label="t.field_available_from" :error="errors.available_from">
+                    <DateTimeField v-model="form.available_from" with-time />
+                </Field>
 
-                        <Field :label="t.field_available_until" :error="errors.available_until">
-                            <Input v-model="form.available_until" type="datetime-local" />
-                        </Field>
-                    </div>
+                <Field :label="t.field_available_until" :error="errors.available_until">
+                    <DateTimeField v-model="form.available_until" with-time />
+                </Field>
 
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t.field_available_help }} {{ timezoneNote }}
-                    </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                    {{ t.field_available_help }} {{ timezoneNote }}
+                </p>
                 </div>
+                </CardPanel>
 
-                <!-- Wo verkauft wird. Durchgesetzt in der Kasse, gegen das
-                     Land der Kaeuferin; hier steht nur die Regel. -->
-                <Field :label="t.field_country_mode" :error="errors.country_mode">
-                    <Select v-model="form.country_mode" :options="countryModes" />
-                </Field>
-
-                <Field
-                    v-if="form.country_mode !== 'all'"
-                    :label="t.field_countries"
-                    :instructions="t.field_countries_help"
-                    :error="countriesError"
-                >
-                    <Combobox
-                        v-model="form.countries"
-                        :options="countries"
-                        :placeholder="t.field_countries_placeholder"
-                        multiple
-                        searchable
-                        clearable
-                    />
-                </Field>
-                </Card>
-
-                <Card class="space-y-5">
+                <CardPanel>
+                <div class="space-y-5">
                 <!-- Der Kurzlink. Steht bei der Verfuegbarkeit, weil er an ihr
                      umschaltet: Stichtag und Kontingent sind dieselben. -->
                 <Subheading :text="t.section_link" />
@@ -1188,7 +1222,7 @@ watch(errors, () => {
                     </Field>
 
                     <Field :label="t.field_link_switch_at" :instructions="`${t.field_link_switch_at_help} ${timezoneNote}`" :error="errors.link_switch_at">
-                        <Input v-model="form.link_switch_at" type="datetime-local" :disabled="!form.link_fallback" />
+                        <DateTimeField v-model="form.link_switch_at" with-time :disabled="!form.link_fallback" />
                     </Field>
 
                     <Field :label="t.field_link_switch_on_sold_out" :error="errors.link_switch_on_sold_out">
@@ -1224,9 +1258,10 @@ watch(errors, () => {
                     </div>
                     <p v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t.link_save_first }}</p>
                 </template>
-                </Card>
                 </div>
-            </TabContent>
+                </CardPanel>
+            </div>
+            </div>
         </Tabs>
 
         <ConfirmationModal

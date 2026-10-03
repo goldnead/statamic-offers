@@ -12,7 +12,7 @@ return [
     'column_name' => 'Angebot',
     'column_handle' => 'Kennung',
     'column_amount' => 'Preis',
-    'column_slot' => 'Ort',
+    'column_slot' => 'Wo erscheint das Angebot',
     'column_performance' => 'Angenommen',
     'column_active' => 'Aktiv',
     'column_confirmation' => 'Bestätigung',

@@ -7,7 +7,10 @@
 - **An offer has its own page instead of a stack.** A row in the list and "New offer" lead to
   `utilities/offers/{offer}` and `utilities/offers/create`. The page is the form: save sits top
   right, delete is in the "…" menu next to it, and the many fields are grouped into the tabs
-  Basics, Price, Checkout, Legal and Visibility. Saving a new offer leads to its page, deleting
+  Basics, Price, Checkout and Legal, with a side column that stays in view: active, handle,
+  availability and short link. The new-offer page lives at `utilities/offers/new` (not
+  `/create`, which Statamic reads as a child of "Utilities" in the nav). Dates use core's date
+  picker with a time field beside it. The list column "Where" is now "Where it appears". Saving a new offer leads to its page, deleting
   leads back to the list. The list rows no longer carry the form payload (`edit_values`,
   `seat_pools`, `usage`, `short_link`); they carry `show_url` instead.
 - The field "Where" is now "Where it appears" (de: "Wo erscheint das Angebot") and explains all

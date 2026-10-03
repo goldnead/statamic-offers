@@ -822,9 +822,15 @@ class ServiceProvider extends AddonServiceProvider
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
                 // Kein `{offer}/edit` und kein Stack: die Detailseite ist das
-                // Formular, wie beim Collection-Entry. `create` steht vor
+                // Formular, wie beim Collection-Entry. `new` steht vor
                 // `{offer}`, sonst liest der Router es als Angebotsnummer.
-                $router->get('create', [OffersController::class, 'create'])->name('create');
+                //
+                // `new` und nicht `create`: eine Adresse, die auf `/create`
+                // endet, haelt Statamic fuer ein restful Kind und markiert
+                // dann den Elternpunkt „Hilfsmittel" statt „Angebote"
+                // (NavItem::currentUrlIsRestfulDescendant). Der Routenname
+                // bleibt `create`.
+                $router->get('new', [OffersController::class, 'create'])->name('create');
                 $router->post('/', [OffersController::class, 'store'])->name('store');
                 // Plaetze: Verwaltungslink neu senden, einen Platz zurueckholen.
                 // Vor `{offer}`, sonst liest der Router „seats" als Angebot.

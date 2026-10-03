@@ -222,7 +222,7 @@ class ConfirmationMailFieldTest extends TestCase
         $this->templateAnlegen('willkommen', 'Willkommen');
 
         $props = $this->actingAs($this->user())
-            ->get('/cp/utilities/offers/create')
+            ->get(cp_route('utilities.offers.create'))
             ->assertOk()
             ->viewData('page')['props'];
 
@@ -245,7 +245,7 @@ class ConfirmationMailFieldTest extends TestCase
         $user = $this->user();
 
         $props = $this->actingAs($user)
-            ->get('/cp/utilities/offers/create')
+            ->get(cp_route('utilities.offers.create'))
             ->assertOk()
             ->viewData('page')['props'];
 

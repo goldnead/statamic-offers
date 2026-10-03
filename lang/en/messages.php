@@ -12,7 +12,7 @@ return [
     'column_name' => 'Offer',
     'column_handle' => 'Handle',
     'column_amount' => 'Price',
-    'column_slot' => 'Where',
+    'column_slot' => 'Where it appears',
     'column_performance' => 'Accepted',
     'column_active' => 'Active',
     'column_confirmation' => 'Confirmation',
