@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers\Tests;
 
+use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\ServiceProvider;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Tests\Support\FakeGateway;
@@ -55,6 +56,18 @@ abstract class TestCase extends AddonTestCase
     {
         $router->post('/!/statamic-payments/webhook', fn () => response()->json(['received' => true]))
             ->name('statamic-payments.webhook');
+    }
+
+    /**
+     * What an offer's detail page hands its form: the `offer` prop.
+     *
+     * @return array<string, mixed>
+     */
+    protected function offerPage(Offer $offer): array
+    {
+        return $this->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
+            ->assertOk()
+            ->viewData('page')['props']['offer'];
     }
 
     protected function tearDown(): void

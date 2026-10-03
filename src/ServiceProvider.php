@@ -821,6 +821,10 @@ class ServiceProvider extends AddonServiceProvider
             ->description(__('statamic-offers::messages.utility_description'))
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
+                // Kein `{offer}/edit` und kein Stack: die Detailseite ist das
+                // Formular, wie beim Collection-Entry. `create` steht vor
+                // `{offer}`, sonst liest der Router es als Angebotsnummer.
+                $router->get('create', [OffersController::class, 'create'])->name('create');
                 $router->post('/', [OffersController::class, 'store'])->name('store');
                 // Plaetze: Verwaltungslink neu senden, einen Platz zurueckholen.
                 // Vor `{offer}`, sonst liest der Router „seats" als Angebot.
@@ -835,6 +839,7 @@ class ServiceProvider extends AddonServiceProvider
                 $router->get('{offer}/qr.{format}', [OffersController::class, 'qr'])
                     ->where('format', 'svg|png')
                     ->name('qr');
+                $router->get('{offer}', [OffersController::class, 'show'])->name('show');
                 $router->patch('{offer}', [OffersController::class, 'update'])->name('update');
                 $router->delete('{offer}', [OffersController::class, 'destroy'])->name('destroy');
             });

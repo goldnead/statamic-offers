@@ -197,7 +197,7 @@ class BrandScopeTest extends TestCase
         $this->angebot('cw-cd', 1, Offer::SLOT_BUMP);
         $this->angebot('hm-shirt', 2, Offer::SLOT_BUMP);
 
-        $seite = $this->actingAs($this->user())->get('/cp/utilities/offers');
+        $seite = $this->actingAs($this->user())->get('/cp/utilities/offers/create');
 
         $seite->assertOk()
             ->assertSee('cw-cd')

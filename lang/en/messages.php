@@ -66,7 +66,8 @@ return [
     'field_headline' => 'Headline',
     'field_body' => 'Text',
     'field_button' => 'Button label',
-    'field_slot' => 'Where',
+    'field_slot' => 'Where it appears',
+    'field_slot_help' => 'At checkout: a checkbox in the payment step, charged together with the main purchase. After the purchase: its own offer that follows a successful payment. Anywhere: wherever a template asks for it.',
     'field_active' => 'Active',
 
     'field_usage' => 'What is wired here',
@@ -98,7 +99,7 @@ return [
     // --- Bumps on an offer -------------------------------------------------
     'column_bumps' => 'Bumps',
     'field_bumps' => 'Bumps',
-    'field_bumps_help' => 'Offers shown as a checkbox next to this one at checkout. Only offers placed “At checkout” can be picked, and the order you pick them is the order they appear.',
+    'field_bumps_help' => 'Offers shown as a checkbox next to this one at checkout. Only offers placed “At checkout” can be picked, and the order you pick them is the order they appear. Offers are picked here and not products, because a bump can have its own price: the same product costs something else as a bump than in the catalogue.',
     'field_bumps_placeholder' => 'Pick offers',
     'field_bumps_empty' => 'No offer is placed “At checkout” yet. Create one and set its place to “At checkout”, then it can be picked here.',
     'field_bumps_invalid' => 'Every bump must be an existing offer placed “At checkout”, and never this offer itself.',
@@ -162,6 +163,12 @@ return [
     'no' => 'No',
 
     // Form sections
+    'tab_basics' => 'Basics',
+    'tab_price' => 'Price',
+    'tab_checkout' => 'Checkout',
+    'tab_legal' => 'Legal',
+    'tab_visibility' => 'Visibility',
+    'tab_has_errors' => 'This tab has errors',
     'section_price' => 'Price',
     'section_availability' => 'Availability',
     'section_access' => 'Access',

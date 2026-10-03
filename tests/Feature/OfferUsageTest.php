@@ -55,9 +55,9 @@ class OfferUsageTest extends TestCase
     }
 
     #[Test]
-    public function die_liste_traegt_die_verdrahtung_je_zeile(): void
+    public function die_detailseite_traegt_die_verdrahtung(): void
     {
-        Offer::create([
+        $angebot = Offer::create([
             'handle' => 'stimmnotfallplan',
             'name' => 'Der Stimmnotfallplan',
             'product' => 'noten-paket',
@@ -67,9 +67,7 @@ class OfferUsageTest extends TestCase
         ]);
 
         $zeile = $this->actingAs(tap(User::make()->email('studio@example.com')->makeSuper())->save())
-            ->getJson('/cp/utilities/offers')
-            ->assertOk()
-            ->json('data.0');
+            ->offerPage($angebot);
 
         // Der Schluessel muss da sein, auch leer. Fehlte er, liefe die Ansicht
         // in ein `undefined` und zeigte gar nichts — wieder eine Verdrahtung,
