@@ -559,7 +559,7 @@ watch(errors, () => {
                     <Textarea v-model="form.body" :rows="4" />
                 </Field>
 
-                <Field :label="t.field_button" :error="errors.button_label">
+                <Field :label="t.field_button" :instructions="t.field_button_help" :error="errors.button_label">
                     <Input v-model="form.button_label" />
                 </Field>
 

@@ -66,6 +66,7 @@ return [
     'field_headline' => 'Headline',
     'field_body' => 'Text',
     'field_button' => 'Button label',
+    'field_button_help' => 'Used for buttons that pay nothing, such as offer cards or "continue to checkout". The button that places the order always reads "Order with obligation to pay" (§ 312j Abs. 3 BGB), upsell acceptance included.',
     'field_slot' => 'Where it appears',
     'field_slot_help' => 'At checkout: a checkbox in the payment step, charged together with the main purchase. After the purchase: its own offer that follows a successful payment. Anywhere: wherever a template asks for it.',
     'field_active' => 'Active',

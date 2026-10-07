@@ -66,6 +66,7 @@ return [
     'field_headline' => 'Überschrift',
     'field_body' => 'Text',
     'field_button' => 'Beschriftung der Schaltfläche',
+    'field_button_help' => 'Gilt für Schaltflächen, die nichts bezahlen, etwa Angebotskarten oder „Weiter zur Kasse“. Der Knopf, der die Bestellung auslöst, zeigt immer „Zahlungspflichtig bestellen“ (§ 312j Abs. 3 BGB), auch bei der Annahme eines Upsells.',
     'field_slot' => 'Wo erscheint das Angebot',
     'field_slot_help' => 'Im Checkout: ein Häkchen im Bezahlvorgang, das mit dem Hauptkauf abgerechnet wird. Nach dem Kauf: ein eigenes Angebot, das nach erfolgreicher Zahlung folgt. Frei platzierbar: überall, wo eine Vorlage danach fragt.',
     'field_active' => 'Aktiv',
