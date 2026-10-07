@@ -1133,6 +1133,7 @@ class OffersController extends CpController
             'field_button' => __('statamic-offers::messages.field_button'),
             'field_image' => __('statamic-offers::messages.field_image'),
             'field_image_help' => __('statamic-offers::messages.field_image_help'),
+            'field_button_help' => __('statamic-offers::messages.field_button_help'),
             'field_active' => __('statamic-offers::messages.field_active'),
             'field_usage' => __('statamic-offers::messages.field_usage'),
             'field_usage_help' => __('statamic-offers::messages.field_usage_help'),

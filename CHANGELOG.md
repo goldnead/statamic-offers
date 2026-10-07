@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.14.1 — 2026-10-07
+
+### Changed
+
+- The *Button label* field says what it is for: buttons that pay nothing (offer cards, "continue to
+  checkout"). The button that places an order, upsell acceptance included, always reads "Zahlungspflichtig
+  bestellen" in `statamic-funnels` 1.19 and later (§ 312j Abs. 3 BGB). Help text only, no behaviour change.
+
 ## 1.14.0 — 2026-10-03
 
 ### Changed
