@@ -339,6 +339,56 @@ class Basket
         return $this->grossCent() - ($coupon ? $this->offCent($coupon) : 0);
     }
 
+    /**
+     * Was die erste Zahlung bucht, zur Anzeige: die Zahl hinter „heute faellig".
+     *
+     * `netCent()` rechnet den Korb mit dem vollen Preis der Hauptzeile und kennt
+     * den bezahlten Testzeitraum nicht; `Offer::firstPaymentCent()` kennt ihn,
+     * aber weder Gutschein noch Bumps. Diese Methode spiegelt, was die Kasse
+     * wirklich bucht (`Subscriptions::start()` und `Checkout::start()`):
+     *
+     * - Hat die Zahlweise einen bezahlten Testzeitraum, ersetzt dessen Betrag
+     *   den Preis der Hauptzeile, **und der Gutschein faellt weg**: die
+     *   Testzeit-Minderung belegt den einen Rabatt-Platz der Zahlung
+     *   (`Subscriptions::trialDiscount() ?? $discount`).
+     * - Sonst ist es der Korb abzueglich Gutschein, wie `netCent()`.
+     * - Die Einrichtungsgebuehr und die Bumps stehen in beiden Faellen dabei.
+     *
+     * Eine reine Anzeige-Zahl: abgebucht wird Zeile fuer Zeile aus dem Katalog.
+     */
+    public function firstPaymentCent(): int
+    {
+        $testbetrag = $this->trialPaymentCent();
+
+        if ($testbetrag === null) {
+            return $this->netCent();
+        }
+
+        return $testbetrag + ($this->setupFeeCent() ?? 0) + $this->bumpsCent();
+    }
+
+    /**
+     * Der Betrag des bezahlten Testzeitraums der gewaehlten Zahlweise, oder null.
+     *
+     * Dieselbe Bedingung wie `Subscriptions::trialDiscount()`: ein Rhythmus,
+     * Testtage, ein Testbetrag, und er ist kleiner als der Preis.
+     */
+    protected function trialPaymentCent(): ?int
+    {
+        if (! $this->isRecurring()) {
+            return null;
+        }
+
+        $testtage = $this->option !== null ? $this->option['trial_days'] : $this->offer->trial_days;
+        $testbetrag = $this->option !== null ? $this->option['trial_amount_cent'] : $this->offer->trial_amount_cent;
+
+        if (is_int($testtage) && $testtage > 0 && is_int($testbetrag) && $testbetrag < $this->mainCent()) {
+            return max(0, $testbetrag);
+        }
+
+        return null;
+    }
+
     protected function offCent(Coupon $coupon): int
     {
         $base = $this->couponBaseCent($coupon);

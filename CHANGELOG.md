@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.15.0 — 2026-10-09
+
+### Added
+
+- `Basket::firstPaymentCent()`: the amount the first payment books, for the line "due today" on a checkout.
+  It mirrors what `Subscriptions::start()` and `Checkout::start()` charge: a paid trial period replaces the
+  price of the main line (and then the coupon does not apply, because the trial takes the payment's one
+  discount slot), otherwise the basket minus coupon, plus setup fee and ticked bumps. `netCent()` is
+  unchanged. Found in a staging test purchase: a subscription with a paid first month showed 65 EUR at the
+  checkout while 45 EUR was booked, and a 10 EUR coupon showed 37 EUR while 27 EUR was booked.
+
 ## 1.14.1 — 2026-10-07
 
 ### Changed
