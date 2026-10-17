@@ -83,6 +83,39 @@ class Offers extends Tags
     }
 
     /**
+     * Ein Inhalts-Kasten, nach Slug oder ID.
+     *
+     * {{ offers:box handle="vokale-kurs" }}
+     *   <h3>{{ headline }}</h3> <p>{{ body }}</p> <a href="{{ url }}">{{ button_label }}</a>
+     * {{ /offers:box }}
+     *
+     * Nichts, wenn es ihn nicht gibt oder dieser Besucher ihn nicht sehen soll;
+     * wie jedes Tag-Paar wird der Block trotzdem einmal mit `no_results`
+     * ausgewertet, das Markup gehoert also in den Block, nicht daneben.
+     */
+    public function box(): array|string
+    {
+        $box = \Goldnead\StatamicOffers\Offers::contentBox((string) $this->params->get('handle', ''), auth()->user());
+
+        return $box === null ? $this->parseNoResults() : $this->parse($box);
+    }
+
+    /**
+     * Mehrere Kaesten, in der Reihenfolge der Liste (IDs oder Slugs).
+     *
+     * {{ offers:boxes :ids="content_boxes" }} … {{ /offers:boxes }}
+     */
+    public function boxes(): array|string
+    {
+        $ids = $this->params->get('ids');
+        $ids = is_array($ids) ? $ids : (is_string($ids) && $ids !== '' ? explode('|', $ids) : []);
+
+        $boxes = \Goldnead\StatamicOffers\Offers::contentBoxes($ids, auth()->user());
+
+        return $boxes === [] ? $this->parseNoResults() : $this->parseLoop($boxes);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected function row(Offer $offer): array

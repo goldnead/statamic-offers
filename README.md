@@ -357,6 +357,34 @@ In the Control Panel the offer panel lists the pools sold (buyer, seats given, c
 **Resend link** (to the buyer's address only) and **Take back** per seat, which asks first for an
 accepted seat.
 
+### Content boxes
+
+A box is a small invitation that does not sell: a line, a headline, two sentences and a button, shown under a
+lesson, at the end of an article or on a thank-you page. It is an entry of the collection `content_boxes`, not an
+offer, because an offer needs a product and a price and a waiting list has neither.
+
+```bash
+php artisan offers:install-boxes   # collection and blueprint, once
+```
+
+```antlers
+{{ offers:box handle="vokale-kurs" }}
+  <aside>
+    <p>{{ kicker }}</p><h3>{{ headline }}</h3><p>{{ body }}</p>
+    <a href="{{ url }}">{{ button_label }}</a>
+  </aside>
+{{ /offers:box }}
+```
+
+`{{ offers:boxes :ids="content_boxes" }}` takes a list of entry ids (an `entries` field on the page that wants the
+boxes). From PHP: `Offers::contentBox($idOrSlug, $viewer)` returns the array or `null`; `null` means show nothing.
+
+Nothing shows when the box is unpublished, has no button label, has no usable target (a path on the site or an
+`https://` address), names an offer that cannot be bought, or the viewer is outside the audience. The audience
+fields `only_tags`, `not_tags` (LeadHub contact tags) and `only_groups` (user groups) are all optional; empty means
+everybody, and a restriction never opens for a visitor nobody can recognise. Bind your own
+`Goldnead\StatamicOffers\Contracts\BoxAudience` to decide differently.
+
 ### Counting
 
 Two numbers per offer: how often it was **shown**, and how often it was **accepted**.

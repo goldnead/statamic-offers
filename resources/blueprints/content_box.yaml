@@ -1,0 +1,78 @@
+title: 'Content Box'
+tabs:
+  main:
+    display: Main
+    sections:
+      -
+        fields:
+          -
+            handle: title
+            field:
+              type: text
+              display: 'Internal name'
+              instructions: 'Only for you, to find the box in lists.'
+              validate:
+                - required
+          -
+            handle: kicker
+            field:
+              type: text
+              display: 'Small line above'
+              instructions: 'For example "How it can go on". Optional.'
+          -
+            handle: headline
+            field:
+              type: text
+              display: Headline
+              validate:
+                - required
+          -
+            handle: body
+            field:
+              type: textarea
+              display: Text
+              instructions: 'Two or three sentences. Plain text.'
+              character_limit: 600
+          -
+            handle: button_label
+            field:
+              type: text
+              display: 'Button label'
+              instructions: 'Without a label there is no box.'
+              validate:
+                - required
+          -
+            handle: url
+            field:
+              type: text
+              display: 'Button link'
+              instructions: 'A path on this site (/ausbildung#warteliste) or a full https address. Empty: the short link of the offer below.'
+          -
+            handle: offer
+            field:
+              type: text
+              display: 'Offer (handle)'
+              instructions: 'Optional. Names the offer this box leads to: the box disappears while that offer cannot be bought, uses its short link when the link above is empty, and counts a view on it.'
+  audience:
+    display: Audience
+    sections:
+      -
+        display: 'Who sees it'
+        instructions: 'All empty: everybody. The tags are the labels of the contact in LeadHub.'
+        fields:
+          -
+            handle: only_tags
+            field:
+              type: taggable
+              display: 'Only for contacts with a tag'
+          -
+            handle: not_tags
+            field:
+              type: taggable
+              display: 'Not for contacts with a tag'
+          -
+            handle: only_groups
+            field:
+              type: user_groups
+              display: 'Only for user groups'
+              mode: select

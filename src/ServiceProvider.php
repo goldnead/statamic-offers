@@ -5,6 +5,7 @@ namespace Goldnead\StatamicOffers;
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\StatamicOffers\Actions\ActivateCoupon;
 use Goldnead\StatamicOffers\Actions\DeactivateCoupon;
+use Goldnead\StatamicOffers\Contracts\BoxAudience;
 use Goldnead\StatamicOffers\Contracts\SeatAccess;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
@@ -15,6 +16,7 @@ use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponLive;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\OfferSlot;
+use Goldnead\StatamicOffers\Support\DefaultBoxAudience;
 use Goldnead\StatamicOffers\Support\OfferHandle;
 use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Support\Settings;
@@ -90,6 +92,10 @@ class ServiceProvider extends AddonServiceProvider
         // Site ohne statamic-entitlements ihren eigenen Weg einhaengen kann
         // (und ein Test eine Attrappe).
         $this->app->bindIf(SeatAccess::class, EntitlementsSeatAccess::class);
+
+        // Wer einen Inhalts-Kasten sehen darf. Eine Site hängt hier ihre eigene
+        // Regel ein (ein Merkmal aus einem Klick-Link, ein Cookie).
+        $this->app->bindIf(BoxAudience::class, DefaultBoxAudience::class);
 
         // Singleton, damit die Boot-Sperre der Brücke auch für den Retry gilt.
         $this->app->singleton(WebhookManagerBridge::class);

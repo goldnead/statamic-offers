@@ -4,6 +4,7 @@ namespace Goldnead\StatamicOffers;
 
 use Goldnead\StatamicOffers\Models\Coupon;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicOffers\Support\ContentBoxes;
 use Goldnead\StatamicOffers\Support\OfferHandle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -254,6 +255,32 @@ final class Offers
     public static function toDisplay(?\DateTimeInterface $moment, string $format = 'Y-m-d\TH:i'): ?string
     {
         return $moment === null ? null : Carbon::instance($moment)->setTimezone(self::displayTimezone())->format($format);
+    }
+
+    /**
+     * Ein Inhalts-Kasten fuer diesen Besucher, oder null (zeig nichts).
+     *
+     * Fuer die Nachbarn (statamic-courses, eine Artikelvorlage, eine
+     * Danke-Seite), die den Kasten nicht selbst bauen wollen. `$idOrSlug` ist
+     * die ID oder der Slug eines Eintrags der Sammlung `content_boxes`;
+     * `$viewer` ein Statamic-Benutzer, eine E-Mail-Adresse oder null.
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function contentBox(string $idOrSlug, mixed $viewer = null): ?array
+    {
+        return app(ContentBoxes::class)->resolve($idOrSlug, $viewer);
+    }
+
+    /**
+     * Mehrere Kaesten in der Reihenfolge der Liste; was nicht gilt, fehlt.
+     *
+     * @param  iterable<mixed>  $idsOrSlugs
+     * @return list<array<string, mixed>>
+     */
+    public static function contentBoxes(iterable $idsOrSlugs, mixed $viewer = null): array
+    {
+        return app(ContentBoxes::class)->resolveMany($idsOrSlugs, $viewer);
     }
 
     /** Der Pfad vor dem Slug eines Kurzlinks, ohne Schraegstriche. */
