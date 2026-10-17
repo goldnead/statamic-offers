@@ -108,7 +108,10 @@ class AvailabilityTest extends TestCase
     public function the_listing_subtracts_reserved_units_too(): void
     {
         $this->offer(['quantity_limit' => 3]);
-        app(Checkout::class)->start('offer:knapp', ['email' => 'k@example.com']);
+        // A second buyer: the same buyer starting the same basket again gets the open
+        // payment back (double-click protection in statamic-payments 1.30), so it
+        // would not be a second held unit.
+        app(Checkout::class)->start('offer:knapp', ['email' => 'andere@example.com']);
         $this->buyAndPay('offer:knapp');
 
         OfferSales::forget();
