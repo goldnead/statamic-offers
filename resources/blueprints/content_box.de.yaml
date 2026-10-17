@@ -1,0 +1,78 @@
+title: Kasten
+tabs:
+  main:
+    display: Inhalt
+    sections:
+      -
+        fields:
+          -
+            handle: title
+            field:
+              type: text
+              display: 'Interner Name'
+              instructions: 'Nur für dich, um den Kasten in Listen zu finden.'
+              validate:
+                - required
+          -
+            handle: kicker
+            field:
+              type: text
+              display: 'Kleine Zeile darüber'
+              instructions: 'Zum Beispiel „Wie es weitergehen kann“. Kann leer bleiben.'
+          -
+            handle: headline
+            field:
+              type: text
+              display: Überschrift
+              validate:
+                - required
+          -
+            handle: body
+            field:
+              type: textarea
+              display: Text
+              instructions: 'Zwei, drei Sätze. Reiner Text.'
+              character_limit: 600
+          -
+            handle: button_label
+            field:
+              type: text
+              display: 'Beschriftung des Knopfs'
+              instructions: 'Ohne Beschriftung gibt es keinen Kasten.'
+              validate:
+                - required
+          -
+            handle: url
+            field:
+              type: text
+              display: 'Ziel des Knopfs'
+              instructions: 'Ein Pfad auf dieser Seite (/ausbildung#warteliste) oder eine vollständige https-Adresse. Leer: der Kurzlink des Angebots unten.'
+          -
+            handle: offer
+            field:
+              type: text
+              display: 'Angebot (Handle)'
+              instructions: 'Kann leer bleiben. Nennt das Angebot, zu dem der Kasten führt: Er verschwindet, solange dieses Angebot nicht kaufbar ist, nimmt dessen Kurzlink, wenn das Ziel oben leer ist, und zählt eine Anzeige am Angebot.'
+  audience:
+    display: Zielgruppe
+    sections:
+      -
+        display: 'Wer ihn sieht'
+        instructions: 'Alles leer: alle. Die Merkmale sind die Labels des Kontakts in LeadHub.'
+        fields:
+          -
+            handle: only_tags
+            field:
+              type: taggable
+              display: 'Nur für Kontakte mit Merkmal'
+          -
+            handle: not_tags
+            field:
+              type: taggable
+              display: 'Nicht für Kontakte mit Merkmal'
+          -
+            handle: only_groups
+            field:
+              type: user_groups
+              display: 'Nur für Benutzergruppen'
+              mode: select

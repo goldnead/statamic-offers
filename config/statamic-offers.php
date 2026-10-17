@@ -214,6 +214,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Inhalts-Kaesten
+    |--------------------------------------------------------------------------
+    |
+    | Eine kleine Einladung (Ueberschrift, Text, Knopf, Ziel), die unter einer
+    | Lektion, am Ende eines Artikels oder auf einer Danke-Seite steht. Ein
+    | Eintrag dieser Sammlung; `php artisan offers:install-boxes` legt sie samt
+    | Blueprint an. `{{ offers:box handle="…" }}` und `Offers::contentBox()`
+    | lesen sie.
+    |
+    */
+
+    'boxes' => [
+        'collection' => 'content_boxes',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Webhook Manager
     |--------------------------------------------------------------------------
     |

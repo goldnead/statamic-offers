@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.17.0 — 2026-10-18
+
+### Added
+
+- Content boxes: a small invitation (small line, headline, text, button, target) that a lesson, the end of an
+  article or a thank-you page shows. An entry of the collection `content_boxes`, created by
+  `php artisan offers:install-boxes` together with its blueprint (German when `app.locale` is German).
+  Deliberately not an offer: an offer needs a product and a price, a waiting list has neither.
+- `Offers::contentBox($idOrSlug, $viewer)` and `Offers::contentBoxes($ids, $viewer)` for neighbours (statamic-courses
+  uses them), `{{ offers:box handle="…" }}` and `{{ offers:boxes :ids="…" }}` for templates. A box that is
+  unpublished, has no button label, has no usable target (a path on the site or an https address) or names an
+  offer that cannot be bought right now is not shown; so is one the viewer is not meant to see.
+- Optional link to an offer (`offer` handle): the box uses its short link when it has no target of its own, counts a
+  view on the offer, and disappears while the offer cannot be bought.
+- Audience per box: `only_tags`, `not_tags` (LeadHub contact tags, compared as slugs) and `only_groups` (user groups).
+  `Contracts\BoxAudience` replaces the rule (a mark from a signed click link, a cookie). A restriction never opens
+  by itself: an anonymous visitor does not see a box limited to a tag.
+
+### Upgrading
+
+- No migration. Run `php artisan offers:install-boxes` once to get the collection; existing sites are not touched.
+
 ## 1.16.0 — 2026-10-17
 
 ### Changed
