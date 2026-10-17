@@ -4,6 +4,7 @@ namespace Goldnead\StatamicOffers\Support;
 
 use Goldnead\BrandContext\Contracts\ProvidesSettings;
 use Goldnead\StatamicOffers\Models\Offer;
+use Goldnead\StatamicPayments\Cp\SuiteNav;
 
 /**
  * Was ein Betreiber an diesem Addon ändern darf, und die einzige Stelle, die
@@ -120,6 +121,23 @@ class Settings implements ProvidesSettings
                     static::field('count_impressions', 'boolean'),
                 ],
             ],
+        ];
+    }
+
+    /**
+     * Unter welchem Eintrag der eigenen CP-Navigation der Unterpunkt "Settings"
+     * hängt: [Sektion, Name], exakt wie in Nav::extend. Optional, gelesen von
+     * der Einstellungs-Schicht in statamic-brand-context (ab 1.16).
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function settingsNavParent(): array
+    {
+        return [
+            class_exists(SuiteNav::class)
+                ? SuiteNav::section()
+                : __('statamic-offers::messages.utility_nav'),
+            __('statamic-offers::messages.utility_nav'),
         ];
     }
 
