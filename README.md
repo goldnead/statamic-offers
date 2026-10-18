@@ -397,6 +397,13 @@ Two numbers per offer: how often it was **shown**, and how often it was **accept
 Accepted means **paid**, not clicked. An offer whose conversion rate counts clicks flatters itself
 every time a card is declined, and the number nobody can trust is worse than no number.
 
+### Funnels map
+
+With `statamic-brand-context` 1.17 an offer can be a point on the funnels map, by its handle. The map shows the name,
+a link to the offer in the Control Panel, whether it is switched on, its own price, and one number: the seats accepted
+in the period. The number comes from the seats' acceptance dates, so an offer without a seat pool shows none. Sales
+are not counted here (they live in the payment tables), and the lifetime `accepted_count` has no date to compare.
+
 ### Events
 
 Every event carries `brandId` (the brand of the pool, offer or payment; `null` without brands), so a

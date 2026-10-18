@@ -403,4 +403,6 @@ return [
     'seat_pools_payment' => 'Payment :id',
     'field_seats_grant_nothing' => 'The product of this offer grants no access. Seats could be accepted but would give access to nothing. Add an access (grants) to the product.',
     'unit_cent' => 'cents',
+    'map_type_label' => 'Offer',
+    'map_metric_seats' => 'Seats accepted',
 ];

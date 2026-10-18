@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers;
 
+use Goldnead\BrandContext\Map\MapObjectRegistry;
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\StatamicOffers\Actions\ActivateCoupon;
 use Goldnead\StatamicOffers\Actions\DeactivateCoupon;
@@ -11,6 +12,7 @@ use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Integrations\EntitlementsSeatAccess;
+use Goldnead\StatamicOffers\Integrations\Map\OfferMapObjects;
 use Goldnead\StatamicOffers\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Query\Scopes\Filters\CouponActive;
@@ -125,6 +127,12 @@ class ServiceProvider extends AddonServiceProvider
         // Eine Anmeldung dort erreichte die Live-Config auf manchen
         // Installationen und auf anderen nicht.
         $this->app->make(SettingsRegistry::class)->register(Settings::class);
+
+        // Angebote als Ziel der Funnel-Karte. Dieselbe Stelle wie die
+        // Einstellungen: in boot(), weil brand-context die Registry dort
+        // erwartet. Eine Installation ohne brand-context gibt es nicht
+        // (Pflicht in composer.json).
+        $this->app->make(MapObjectRegistry::class)->register(OfferMapObjects::class);
 
         // Aus boot() eingereiht, nicht aus bootAddon(): dort feuerte ein
         // verschachteltes `booted()` sofort, womöglich vor dem bootAddon()
