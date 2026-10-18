@@ -112,6 +112,19 @@ class ContentBoxTest extends TestCase
     }
 
     #[Test]
+    public function ein_ziel_das_ein_browser_als_fremden_host_liest_ist_keines(): void
+    {
+        // Browser lesen `\` wie `/` und streichen Tabulator und Zeilenumbruch
+        // aus einer Adresse: aus `/\evil.example` und `/<TAB>/evil.example`
+        // wird `//evil.example`.
+        foreach (['backslash' => '/\\evil.example/x', 'tab' => "/\t/evil.example", 'umbruch' => "/\n/evil.example", 'https-backslash' => 'https://evil.example\\@good.example', 'leerzeichen' => 'https://exa mple.com'] as $slug => $url) {
+            $this->box($slug, ['url' => $url]);
+
+            $this->assertNull(Offers::contentBox($slug), $slug);
+        }
+    }
+
+    #[Test]
     public function ein_pfad_auf_der_eigenen_seite_ist_ein_gueltiges_ziel(): void
     {
         $this->box('ausbildung', ['url' => '/ausbildung#warteliste']);

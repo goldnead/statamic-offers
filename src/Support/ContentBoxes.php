@@ -139,10 +139,20 @@ class ContentBoxes
     /**
      * Nur ein Pfad auf der eigenen Seite oder eine https-Adresse: kein
      * `javascript:`, keine protokollrelative Adresse auf einen fremden Host.
+     *
+     * Dazu weder Leerraum noch Steuerzeichen noch Backslash: Browser lesen
+     * `\` wie `/` und streichen Tabulator und Zeilenumbruch aus einer Adresse,
+     * `/\evil.example` und `/<TAB>/evil.example` waeren sonst `//evil.example`.
      */
     public static function usableUrl(string $url): bool
     {
-        return preg_match('#^(https://|/(?!/))#i', trim($url)) === 1;
+        $url = trim($url);
+
+        if (preg_match('/[\x00-\x20\x7f\\\\]/', $url) === 1) {
+            return false;
+        }
+
+        return preg_match('#^(https://|/(?!/))#i', $url) === 1;
     }
 
     protected function find(string $idOrSlug): ?EntryContract

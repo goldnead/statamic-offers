@@ -370,11 +370,16 @@ php artisan offers:install-boxes   # collection and blueprint, once
 ```antlers
 {{ offers:box handle="vokale-kurs" }}
   <aside>
-    <p>{{ kicker }}</p><h3>{{ headline }}</h3><p>{{ body }}</p>
-    <a href="{{ url }}">{{ button_label }}</a>
+    <p>{{ kicker | sanitize }}</p><h3>{{ headline | sanitize }}</h3><p>{{ body | sanitize }}</p>
+    <a href="{{ url }}">{{ button_label | sanitize }}</a>
   </aside>
 {{ /offers:box }}
 ```
+
+Antlers does not escape what it prints, so run the texts through `sanitize` as above (the target is checked: only a
+path on the site or `https://`, no whitespace, control characters or backslash). The tags ask the logged-in user for
+the audience, so a page under Statamic static caching shows the first visitor's answer to everybody: keep boxes with an
+audience out of a statically cached page or wrap them in `{{ nocache }}`.
 
 `{{ offers:boxes :ids="content_boxes" }}` takes a list of entry ids (an `entries` field on the page that wants the
 boxes). From PHP: `Offers::contentBox($idOrSlug, $viewer)` returns the array or `null`; `null` means show nothing.
