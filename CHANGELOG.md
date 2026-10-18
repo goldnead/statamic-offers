@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.18.0 — 2026-10-18
+
+### Added
+
+- Map provider for the funnels map (`statamic-brand-context` 1.17): an offer can be picked as a map object by its
+  handle. It shows its name, a link to the Control Panel, whether it is switched on, its own price, and the number of
+  seats accepted in the period (`claimed_at` of its seats). Without a seat pool the card shows no number.
+  Requires `goldnead/statamic-brand-context` ^1.17.
+
 ## 1.17.1 — 2026-10-18
 
 ### Fixed

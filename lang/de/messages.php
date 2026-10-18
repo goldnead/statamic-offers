@@ -403,4 +403,6 @@ return [
     'seat_pools_payment' => 'Zahlung :id',
     'field_seats_grant_nothing' => 'Das Produkt dieses Angebots vergibt keinen Zugang. Plätze ließen sich zwar annehmen, würden aber nirgends Zugang geben. Trage beim Produkt einen Zugang ein (grants).',
     'unit_cent' => 'Cent',
+    'map_type_label' => 'Angebot',
+    'map_metric_seats' => 'Plätze angenommen',
 ];
