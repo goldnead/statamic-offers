@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.17.1 — 2026-10-18
+
+### Fixed
+
+- Content boxes: a target with a backslash, whitespace or a control character is refused. Browsers read `\` like `/`
+  and drop tabs and line breaks from an address, so `/\evil.example` and `/<TAB>/evil.example` pointed at another host.
+- README: the template example sanitizes the texts, and the static caching caveat of the audience is spelled out.
+
 ## 1.17.0 — 2026-10-18
 
 ### Added
