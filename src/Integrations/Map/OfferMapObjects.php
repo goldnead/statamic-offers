@@ -2,7 +2,9 @@
 
 namespace Goldnead\StatamicOffers\Integrations\Map;
 
+use Goldnead\BrandContext\Contracts\ProvidesMapEdges;
 use Goldnead\BrandContext\Contracts\ProvidesMapObjects;
+use Goldnead\BrandContext\Map\MapEdge;
 use Goldnead\BrandContext\Map\MapMetric;
 use Goldnead\BrandContext\Map\MapObject;
 use Goldnead\BrandContext\Map\MapPeriod;
@@ -24,7 +26,7 @@ use Goldnead\StatamicOffers\Models\SeatPool;
  * (`offer_seats`). Gibt es für das Angebot nie ein Kontingent, bleibt die Zahl
  * leer, statt eine Null zu zeigen, die nach „Kontingent ohne Annahmen" klingt.
  */
-class OfferMapObjects implements ProvidesMapObjects
+class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
 {
     public function type(): string
     {
@@ -106,6 +108,38 @@ class OfferMapObjects implements ProvidesMapObjects
             what: __('statamic-offers::messages.map_metric_seats'),
             period: $period,
         );
+    }
+
+    /**
+     * Angebot → Produkt, je Paar eine Kante. Die Produkte kommen aus
+     * `Offer::productHandles()`, dem Leitprodukt und den weiteren. Ein Produkt
+     * ohne Slug ergibt keine Kante. Dieselbe Marken-Sicht wie `objects()`.
+     *
+     * @return list<MapEdge>
+     */
+    public function edges(): iterable
+    {
+        $edges = [];
+
+        foreach (Offer::query()->forBrand()->get() as $offer) {
+            foreach ($offer->productHandles() as $slug) {
+                if ((string) $slug === '') {
+                    continue;
+                }
+
+                $edges[] = new MapEdge(
+                    fromType: $this->type(),
+                    fromId: (string) $offer->handle,
+                    toType: 'product',
+                    toId: $slug,
+                    kind: 'sells',
+                    label: __('statamic-offers::messages.map_edge_sells'),
+                    derivedFrom: 'products of the offer',
+                );
+            }
+        }
+
+        return $edges;
     }
 
     protected function offerFor(string $handle): ?Offer

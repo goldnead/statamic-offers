@@ -403,6 +403,7 @@ With `statamic-brand-context` 1.17 an offer can be a point on the funnels map, b
 a link to the offer in the Control Panel, whether it is switched on, its own price, and one number: the seats accepted
 in the period. The number comes from the seats' acceptance dates, so an offer without a seat pool shows none. Sales
 are not counted here (they live in the payment tables), and the lifetime `accepted_count` has no date to compare.
+With `statamic-brand-context` 1.18 the map also draws a line labelled "sells" from each offer to each of its products.
 
 ### Events
 

@@ -405,4 +405,5 @@ return [
     'unit_cent' => 'Cent',
     'map_type_label' => 'Angebot',
     'map_metric_seats' => 'Plätze angenommen',
+    'map_edge_sells' => 'verkauft',
 ];
