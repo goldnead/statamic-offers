@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.19.0 — 2026-10-19
+
+### Added
+
+- The offer's edges to its products on the funnels map (`statamic-brand-context` 1.18). Each offer draws a line
+  labelled "sells" to every product it names, the lead product and the others, read from the offer's own fields. A
+  product without a slug draws no line, and nothing is estimated.
+
+### Upgrading
+
+- No migration. Requires `goldnead/statamic-brand-context` ^1.18.
+
 ## 1.18.0 — 2026-10-18
 
 ### Added

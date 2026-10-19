@@ -405,4 +405,5 @@ return [
     'unit_cent' => 'cents',
     'map_type_label' => 'Offer',
     'map_metric_seats' => 'Seats accepted',
+    'map_edge_sells' => 'sells',
 ];
