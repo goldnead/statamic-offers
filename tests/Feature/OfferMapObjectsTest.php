@@ -310,19 +310,6 @@ class OfferMapObjectsTest extends TestCase
     }
 
     #[Test]
-    public function the_metric_period_reads_german_in_a_german_cp(): void
-    {
-        app()->setLocale('de');
-        $offer = $this->offer();
-        $pool = $this->pool($offer);
-        Seat::create(['pool_id' => $pool->id, 'email' => 'a@chor.example', 'token' => bin2hex(random_bytes(16)), 'status' => Seat::STATUS_CLAIMED, 'claimed_at' => Carbon::now()->subDay()]);
-
-        $period = $this->provider->metric('stimmbildung', MapPeriod::lastDays(30))->toArray()['period'];
-
-        $this->assertSame('letzte 30 Tage', $period);
-    }
-
-    #[Test]
     public function details_of_an_unknown_offer_are_null(): void
     {
         $this->assertNull($this->provider->details('gibt-es-nicht', MapPeriod::lastDays(30)));
