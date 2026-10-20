@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Content boxes on the funnels map (`statamic-brand-context` 1.18): a box can be picked as a map object (type
+  `content_box`, keyed by its slug). New lines, each read from a field and never stored: course to box (the box grids
+  `course_boxes`, `lesson_boxes` and `video_hints` of a course and its lessons) and box to product (the box's `offer`,
+  through the products of that offer). A box id or offer that names nothing draws a broken line with the written text.
+  The card shows no number: a box has no counting rule of its own.
+
 ## 1.19.0 — 2026-10-19
 
 ### Added

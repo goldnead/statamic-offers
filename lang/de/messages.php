@@ -406,4 +406,7 @@ return [
     'map_type_label' => 'Angebot',
     'map_metric_seats' => 'Plätze angenommen',
     'map_edge_sells' => 'verkauft',
+    'map_box_type_label' => 'Kasten',
+    'map_edge_shows_box' => 'zeigt Kasten',
+    'map_edge_invites_to' => 'lädt ein zu',
 ];

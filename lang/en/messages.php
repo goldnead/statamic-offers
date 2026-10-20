@@ -406,4 +406,7 @@ return [
     'map_type_label' => 'Offer',
     'map_metric_seats' => 'Seats accepted',
     'map_edge_sells' => 'sells',
+    'map_box_type_label' => 'Content box',
+    'map_edge_shows_box' => 'shows box',
+    'map_edge_invites_to' => 'invites to',
 ];
