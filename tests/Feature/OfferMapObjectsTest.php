@@ -291,6 +291,23 @@ class OfferMapObjectsTest extends TestCase
     }
 
     #[Test]
+    public function details_speak_german_in_a_german_cp(): void
+    {
+        app()->setLocale('de');
+        $offer = $this->offer(['amount_cent' => 179000]);
+        $pool = $this->pool($offer);
+        Seat::create(['pool_id' => $pool->id, 'email' => 'a@chor.example', 'token' => bin2hex(random_bytes(16)), 'status' => Seat::STATUS_CLAIMED, 'claimed_at' => Carbon::now()->subDays(2)]);
+
+        $rows = $this->provider->details('stimmbildung', MapPeriod::lastDays(30))[0]['rows'];
+
+        $this->assertSame(
+            ['Preis', 'Bezahlte Bestellungen (letzte 30 Tage)', 'Plätze angenommen (letzte 30 Tage)'],
+            array_column($rows, 'label'),
+        );
+        $this->assertSame('1.790,00 EUR', $rows[0]['value']);
+    }
+
+    #[Test]
     public function details_of_an_unknown_offer_are_null(): void
     {
         $this->assertNull($this->provider->details('gibt-es-nicht', MapPeriod::lastDays(30)));

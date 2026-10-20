@@ -15,6 +15,7 @@ use Goldnead\StatamicOffers\Support\OfferHandle;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicPayments\Models\Payment;
 use Goldnead\StatamicPayments\Support\Brands;
+use Goldnead\StatamicPayments\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -126,7 +127,8 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
 
         $rows = [];
 
-        $price = $this->detail($offer);
+        $cent = $offer->amountCent();
+        $price = $cent === null ? null : $this->money($cent, $offer->currency());
 
         if ($price !== null) {
             $rows[] = ['label' => __('statamic-offers::messages.map_detail_price'), 'value' => Str::limit($price, 120), 'href' => null];
@@ -136,7 +138,7 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
 
         if ($orders !== null) {
             $rows[] = [
-                'label' => __('statamic-offers::messages.map_detail_orders', ['period' => $period->label()]),
+                'label' => __('statamic-offers::messages.map_detail_orders', ['period' => __('statamic-offers::messages.map_detail_period', ['days' => $period->days])]),
                 'value' => (string) $orders,
                 'href' => null,
             ];
@@ -146,13 +148,31 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
 
         if ($seats !== null) {
             $rows[] = [
-                'label' => __('statamic-offers::messages.map_detail_seats', ['period' => $period->label()]),
+                'label' => __('statamic-offers::messages.map_detail_seats', ['period' => __('statamic-offers::messages.map_detail_period', ['days' => $period->days])]),
                 'value' => (string) $seats,
                 'href' => null,
             ];
         }
 
         return $rows === [] ? null : [['kind' => 'facts', 'title' => null, 'rows' => $rows]];
+    }
+
+    /**
+     * Der Preis, wie ihn die Sprache des CP schreibt, „1.790,00 EUR" auf
+     * Deutsch. Dieselbe Schreibweise wie im Seitenfenster von statamic-products,
+     * aus den eigenen Sprachdateien; die Nachkommastellen je Währung kommen
+     * von payments.
+     */
+    protected function money(int $cent, string $currency): string
+    {
+        $decimals = Money::decimals($currency);
+
+        return number_format(
+            $cent / (10 ** $decimals),
+            $decimals,
+            __('statamic-offers::messages.map_decimal_point'),
+            __('statamic-offers::messages.map_thousands_separator'),
+        ).' '.$currency;
     }
 
     /** Angenommene Plätze im Zeitraum; null ohne Kontingent. Die Regel der Karten-Zahl. */
