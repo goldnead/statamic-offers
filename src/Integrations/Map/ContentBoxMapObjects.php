@@ -11,6 +11,7 @@ use Goldnead\BrandContext\Map\MapPeriod;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\ContentBoxes;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Statamic\Entries\Entry as EntryContract;
 use Statamic\Facades\Collection as CollectionFacade;
 use Statamic\Facades\Entry;
@@ -193,6 +194,203 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
         }
 
         return $edges;
+    }
+
+    /**
+     * Paare, die dieses Addon schreiben kann (Vertrag "Verbindung ziehen", duck-typed).
+     * Kasten → Produkt gibt es bewusst nicht: der Kasten kennt nur ein Angebot.
+     *
+     * @return list<array{from_type:string,to_type:string,kind:string,label:string}>
+     */
+    public function connectionRules(): array
+    {
+        return [
+            ['from_type' => 'course', 'to_type' => $this->type(), 'kind' => 'shows_box',
+                'label' => __('statamic-offers::messages.map_edge_shows_box')],
+            ['from_type' => $this->type(), 'to_type' => 'offer', 'kind' => 'invites_to',
+                'label' => __('statamic-offers::messages.map_edge_invites_to')],
+        ];
+    }
+
+    /** @param  array<string, string>  $c */
+    public function connectionAuthorized(array $c, $user): bool
+    {
+        if ($user === null || ! method_exists($user, 'can')) {
+            return false;
+        }
+
+        if ($this->isCourseBox($c)) {
+            return (bool) $user->can('edit '.$this->courseCollection().' entries');
+        }
+
+        if ($this->isBoxOffer($c)) {
+            return (bool) $user->can('edit '.ContentBoxes::collection().' entries');
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, string>  $c
+     * @return array{consequence:string,before:string,after:string}
+     */
+    public function connectionPreview(array $c, string $action): array
+    {
+        if (! in_array($action, ['connect', 'disconnect'], true)) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_unsupported'));
+        }
+
+        return $this->isCourseBox($c) ? $this->previewCourseBox($c, $action) : $this->previewBoxOffer($c, $action);
+    }
+
+    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    public function connect(array $c): array
+    {
+        return $this->write($c, 'connect');
+    }
+
+    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    public function disconnect(array $c): array
+    {
+        return $this->write($c, 'disconnect');
+    }
+
+    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    protected function write(array $c, string $action): array
+    {
+        $preview = $this->connectionPreview($c, $action);
+
+        if ($this->isCourseBox($c)) {
+            $course = $this->courseEntry((string) $c['from_id']);
+            $box = $this->boxEntry((string) $c['to_id']);
+            $rows = $this->courseRows($course);
+
+            if ($action === 'connect') {
+                $rows[] = ['id' => Str::random(8), 'box' => [(string) $box->id()], 'place' => 'end'];
+            } else {
+                $rows = array_values(array_filter($rows, fn ($row) => $this->rowBoxId($row) !== (string) $box->id()));
+            }
+
+            $course->set('course_boxes', $rows)->save();
+        } else {
+            $box = $this->boxEntry((string) $c['from_id']);
+            $box->set('offer', $action === 'connect' ? (string) $c['to_id'] : null)->save();
+        }
+
+        return ['before' => $preview['before'], 'after' => $preview['after']];
+    }
+
+    /** @param  array<string, string>  $c  @return array{consequence:string,before:string,after:string} */
+    protected function previewCourseBox(array $c, string $action): array
+    {
+        $course = $this->courseEntry((string) $c['from_id']);
+        $box = $this->boxEntry((string) $c['to_id']);
+        $connected = collect($this->courseRows($course))
+            ->contains(fn ($row) => $this->rowBoxId($row) === (string) $box->id());
+        $names = ['course' => $this->nameOf($course), 'box' => $this->nameOf($box)];
+
+        if ($action === 'connect' && $connected) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_box_already', $names));
+        }
+
+        if ($action === 'disconnect' && ! $connected) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_box_not_in_course', $names));
+        }
+
+        $yes = __('statamic-offers::messages.map_connect_box_shown', $names);
+        $no = __('statamic-offers::messages.map_connect_box_not_shown', $names);
+
+        return [
+            'consequence' => __('statamic-offers::messages.map_connect_box_'.$action, $names),
+            'before' => $action === 'connect' ? $no : $yes,
+            'after' => $action === 'connect' ? $yes : $no,
+        ];
+    }
+
+    /** @param  array<string, string>  $c  @return array{consequence:string,before:string,after:string} */
+    protected function previewBoxOffer(array $c, string $action): array
+    {
+        $box = $this->boxEntry((string) $c['from_id']);
+        $handle = (string) $c['to_id'];
+        $offer = Offer::query()->forBrand()->where('handle', $handle)->first();
+
+        if ($offer === null) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_offer_missing', ['offer' => $handle]));
+        }
+
+        $current = trim((string) $box->get('offer'));
+        $names = ['box' => $this->nameOf($box), 'offer' => (string) ($offer->name ?: $handle)];
+
+        if ($action === 'connect' && $current === $handle) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_offer_already', $names));
+        }
+
+        if ($action === 'connect' && $current !== '') {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_offer_other', $names + ['current' => $current]));
+        }
+
+        if ($action === 'disconnect' && $current !== $handle) {
+            throw new \DomainException($current === ''
+                ? __('statamic-offers::messages.map_connect_offer_none', $names)
+                : __('statamic-offers::messages.map_connect_offer_other', $names + ['current' => $current]));
+        }
+
+        $none = __('statamic-offers::messages.map_connect_offer_empty');
+
+        return [
+            'consequence' => __('statamic-offers::messages.map_connect_offer_'.$action, $names),
+            'before' => $action === 'connect' ? $none : $handle,
+            'after' => $action === 'connect' ? $handle : $none,
+        ];
+    }
+
+    /** @param  array<string, string>  $c */
+    protected function isCourseBox(array $c): bool
+    {
+        return ($c['from_type'] ?? '') === 'course' && ($c['to_type'] ?? '') === $this->type();
+    }
+
+    /** @param  array<string, string>  $c */
+    protected function isBoxOffer(array $c): bool
+    {
+        return ($c['from_type'] ?? '') === $this->type() && ($c['to_type'] ?? '') === 'offer';
+    }
+
+    protected function boxEntry(string $slug): EntryContract
+    {
+        $box = $slug === '' ? null : $this->boxes()->first(fn (EntryContract $b) => (string) $b->slug() === $slug);
+
+        return $box ?? throw new \DomainException(__('statamic-offers::messages.map_connect_box_missing', ['box' => $slug]));
+    }
+
+    protected function courseEntry(string $slug): EntryContract
+    {
+        $course = $slug === '' ? null : $this->entriesOf($this->courseCollection())
+            ->first(fn ($e) => (string) $e->slug() === $slug && $e->get('kind') !== 'material');
+
+        return $course ?? throw new \DomainException(__('statamic-offers::messages.map_connect_course_missing', ['course' => $slug]));
+    }
+
+    /** @return list<mixed> */
+    protected function courseRows(EntryContract $course): array
+    {
+        $rows = $course->get('course_boxes');
+
+        return is_array($rows) ? array_values($rows) : [];
+    }
+
+    protected function rowBoxId(mixed $row): string
+    {
+        $raw = is_array($row) ? $row['box'] ?? null : null;
+
+        return trim((string) (is_array($raw) ? ($raw[0] ?? '') : $raw));
+    }
+
+    protected function nameOf(EntryContract $entry): string
+    {
+        $title = trim((string) $entry->get('title'));
+
+        return $title !== '' ? $title : (string) $entry->slug();
     }
 
     /** @return Collection<int, EntryContract> */
