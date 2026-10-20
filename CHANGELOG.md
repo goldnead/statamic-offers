@@ -2,13 +2,15 @@
 
 ## Unreleased
 
+## 1.20.0 — 2026-10-20
+
 ### Added
 
 - Drawing connections on the funnels map: the content box provider can now write two pairs itself, course to box
   (adds or removes the row in the course's `course_boxes` grid) and box to offer (sets or clears the box's `offer`,
   only when empty). Each is refused with a plain reason if the target is already taken, needs the permission to edit
   the entries of the collection it changes, and has a plain-language consequence (en, de). Box to product is not offered.
-  Needs `statamic-brand-context` 1.19 (unreleased): older versions simply offer no connections.
+  Needs `statamic-brand-context` 1.19: older versions simply offer no connections.
   Both ends are checked: course to box needs "edit courses entries" and "edit content_boxes entries", box to
   offer needs "edit content_boxes entries" and "access offers utility". Releasing a course row removes exactly one
   row and hands it back, so an undo restores the same row (id, place, all fields, position), also with several rows
