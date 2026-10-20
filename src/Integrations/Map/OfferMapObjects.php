@@ -11,15 +11,15 @@ use Goldnead\BrandContext\Map\MapPeriod;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Support\MapPrice;
 use Goldnead\StatamicOffers\Support\OfferHandle;
 use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicPayments\Models\Payment;
+use Goldnead\StatamicPayments\ServiceProvider;
 use Goldnead\StatamicPayments\Support\Brands;
-use Goldnead\StatamicPayments\Support\Money;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 /**
  * Angebote für die Funnel-Karte.
@@ -108,9 +108,10 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
 
     /**
      * Optionale Blöcke für das Seitenfenster der Karte (Landkarte v4, Teil 3):
-     * ein Faktenblock mit Preis, bezahlten Bestellungen und angenommenen
-     * Plätzen im Zeitraum. Jede Zeile fehlt, wenn ihre Quelle fehlt: kein Preis,
-     * keine Zahlungstabellen, nie ein Kontingent. Null bei unbekanntem Angebot.
+     * ein Faktenblock mit den bezahlten Bestellungen im Zeitraum. Preis und
+     * Platzzahl stehen schon im Kopf des Fensters (Zeile `detail`, Kennzahl
+     * `metric`) und kommen hier nicht noch einmal vor. Null ohne
+     * Zahlungstabellen und bei unbekanntem Angebot.
      *
      * Die Bestellungen sind eine Anzahl, keine Summe, also werden Währungen
      * nicht addiert.
@@ -125,54 +126,48 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             return null;
         }
 
-        $rows = [];
-
-        $cent = $offer->amountCent();
-        $price = $cent === null ? null : $this->money($cent, $offer->currency());
-
-        if ($price !== null) {
-            $rows[] = ['label' => __('statamic-offers::messages.map_detail_price'), 'value' => Str::limit($price, 120), 'href' => null];
-        }
-
         $orders = $this->paidOrders($offer, $period);
 
-        if ($orders !== null) {
-            $rows[] = [
+        if ($orders === null) {
+            return null;
+        }
+
+        return [[
+            'kind' => 'facts',
+            'title' => null,
+            'rows' => [[
                 'label' => __('statamic-offers::messages.map_detail_orders', ['period' => __('statamic-offers::messages.map_detail_period', ['days' => $period->days])]),
                 'value' => (string) $orders,
                 'href' => null,
-            ];
-        }
-
-        $seats = $this->seatsAccepted($offer, $period);
-
-        if ($seats !== null) {
-            $rows[] = [
-                'label' => __('statamic-offers::messages.map_detail_seats', ['period' => __('statamic-offers::messages.map_detail_period', ['days' => $period->days])]),
-                'value' => (string) $seats,
-                'href' => null,
-            ];
-        }
-
-        return $rows === [] ? null : [['kind' => 'facts', 'title' => null, 'rows' => $rows]];
+            ]],
+        ]];
     }
 
     /**
-     * Der Preis, wie ihn die Sprache des CP schreibt, „1.790,00 EUR" auf
-     * Deutsch. Dieselbe Schreibweise wie im Seitenfenster von statamic-products,
-     * aus den eigenen Sprachdateien; die Nachkommastellen je Währung kommen
-     * von payments.
+     * Wer das Seitenfenster öffnen darf (brand-context 1.20 fragt vor
+     * `details()`): Preis und Verkäufe sind Zahlungsdaten, also das Recht, das
+     * im Control Panel die Bestellungen zeigt, `access payments utility`
+     * (`Utility::register('payments')` in statamic-payments). Ohne payments das
+     * eigene Recht für die Angebote. Kein Nutzer, kein Recht, jeder Fehler: nein.
      */
-    protected function money(int $cent, string $currency): string
+    public function detailsAuthorized(string $id, $user): bool
     {
-        $decimals = Money::decimals($currency);
+        if ($user === null || ! method_exists($user, 'can')) {
+            return false;
+        }
 
-        return number_format(
-            $cent / (10 ** $decimals),
-            $decimals,
-            __('statamic-offers::messages.map_decimal_point'),
-            __('statamic-offers::messages.map_thousands_separator'),
-        ).' '.$currency;
+        try {
+            $permission = $this->paymentsInstalled() ? 'access payments utility' : 'access offers utility';
+
+            return $user->can($permission) === true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    protected function paymentsInstalled(): bool
+    {
+        return class_exists(ServiceProvider::class);
     }
 
     /** Angenommene Plätze im Zeitraum; null ohne Kontingent. Die Regel der Karten-Zahl. */
@@ -295,8 +290,8 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
     /** Der Preis, so wie die Leserin ihn liest. Null, wenn es keinen gibt. */
     protected function detail(Offer $offer): ?string
     {
-        $betrag = $offer->amountLocal();
+        $cent = $offer->amountCent();
 
-        return $betrag === null ? null : $betrag.' '.$offer->currency();
+        return $cent === null ? null : MapPrice::format($cent, $offer->currency());
     }
 }

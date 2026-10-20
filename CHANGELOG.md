@@ -4,7 +4,9 @@
 
 ### Added
 
-- `OfferMapObjects::details()`: the funnels map's side panel shows the offer's price, its paid orders and its accepted seats over the period. Orders follow the counting rule of the product card in statamic-products (paid, `paid_at` in the period and not in the future, current brand, each payment once); lines with a suffix (`offer:x:raten3`) belong to the offer, a setup fee alone is no sale. It is a count, never a sum across currencies. A row is left out when its source is missing (no price, no payments tables, never a seat pool).
+- `OfferMapObjects::detailsAuthorized()`: the side panel is only opened for users with `access payments utility` (the right that shows the orders in the Control Panel), or `access offers utility` when statamic-payments is missing; no user, no panel. Needs statamic-brand-context 1.20.
+- Prices on the map are written in the locale's format (`199,00 €` in German, `€199.00` in English; symbols for EUR, USD, GBP, the code for the rest). A German JSON translation for "last :days days" gives the map number's period as "letzte 30 Tage".
+- `OfferMapObjects::details()`: the funnels map's side panel shows the offer's paid orders over the period. Price and seats are not repeated there: the header already carries them. Orders follow the counting rule of the product card in statamic-products (paid, `paid_at` in the period and not in the future, current brand, each payment once); lines with a suffix (`offer:x:raten3`) belong to the offer, a setup fee alone is no sale. It is a count, never a sum across currencies. Without the payments tables there is no block.
 
 ## 1.20.0 — 2026-10-20
 

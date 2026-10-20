@@ -164,6 +164,9 @@ class ServiceProvider extends AddonServiceProvider
     public function bootAddon()
     {
         $this->loadTranslationsFrom(__DIR__.'/../lang', 'statamic-offers');
+        // Der Zeitraum der Karten-Zahl („last 30 days") kommt als JSON-Schlüssel
+        // aus brand-context und hat dort keine deutsche Zeile.
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         // Ausdruecklich, aus demselben Grund wie `$routes`: der Namensraum der
         // Elternklasse loest ueber das Manifest auf.
