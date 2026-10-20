@@ -425,4 +425,6 @@ return [
     'map_connect_offer_empty' => 'no offer',
     'map_connect_offer_connect' => 'From now on the box ":box" invites to the offer ":offer".',
     'map_connect_offer_disconnect' => 'The box ":box" no longer invites to the offer ":offer".',
+    'map_connect_changed' => 'This changed in the meantime. Nothing was written. Reload the map and try again.',
+    'map_connect_restore_invalid' => 'The removed entry can no longer be put back.',
 ];

@@ -212,24 +212,187 @@ class ContentBoxConnectionTest extends TestCase
         $this->assertFalse($this->provider->connectionAuthorized($c, User::make()->email('s@example.com')->makeSuper()));
     }
 
+    protected function userWith(string $id, array $permissions): \Statamic\Contracts\Auth\User
+    {
+        $role = Role::make('role-'.$id);
+        foreach ($permissions as $permission) {
+            $role->addPermission($permission);
+        }
+        $role->save();
+
+        return tap(User::make()->id($id)->email($id.'@example.com')->assignRole($role))->save();
+    }
+
     #[Test]
-    public function permissions_follow_the_edited_collection(): void
+    public function permissions_need_source_and_target_for_course_to_box(): void
     {
         $super = tap(User::make()->email('super@example.com')->makeSuper())->save();
         $none = tap(User::make()->id('u-none')->email('none@example.com'))->save();
-        $courseEditor = tap(User::make()->id('u-c')->email('c@example.com')->assignRole(tap(Role::make('course-editor')->addPermission('edit courses entries'))->save()))->save();
-        $boxEditor = tap(User::make()->id('u-b')->email('b@example.com')->assignRole(tap(Role::make('box-editor')->addPermission('edit content_boxes entries'))->save()))->save();
-
         $cb = $this->courseBox('kurs', 'a');
-        $bo = $this->boxOffer('a', 'vokale');
 
         $this->assertTrue($this->provider->connectionAuthorized($cb, $super));
-        $this->assertTrue($this->provider->connectionAuthorized($bo, $super));
         $this->assertFalse($this->provider->connectionAuthorized($cb, $none));
         $this->assertFalse($this->provider->connectionAuthorized($cb, null));
-        $this->assertTrue($this->provider->connectionAuthorized($cb, $courseEditor));
-        $this->assertFalse($this->provider->connectionAuthorized($bo, $courseEditor));
-        $this->assertTrue($this->provider->connectionAuthorized($bo, $boxEditor));
-        $this->assertFalse($this->provider->connectionAuthorized($cb, $boxEditor));
+        $this->assertFalse($this->provider->connectionAuthorized($cb, $this->userWith('only-course', ['edit courses entries'])));
+        $this->assertFalse($this->provider->connectionAuthorized($cb, $this->userWith('only-box', ['edit content_boxes entries'])));
+        $this->assertTrue($this->provider->connectionAuthorized($cb, $this->userWith('both', ['edit courses entries', 'edit content_boxes entries'])));
+    }
+
+    #[Test]
+    public function permissions_need_source_and_target_for_box_to_offer(): void
+    {
+        $super = tap(User::make()->email('super@example.com')->makeSuper())->save();
+        $bo = $this->boxOffer('a', 'vokale');
+
+        $this->assertTrue($this->provider->connectionAuthorized($bo, $super));
+        $this->assertFalse($this->provider->connectionAuthorized($bo, $this->userWith('only-box', ['edit content_boxes entries'])));
+        $this->assertFalse($this->provider->connectionAuthorized($bo, $this->userWith('only-offers', ['access offers utility'])));
+        $this->assertFalse($this->provider->connectionAuthorized($bo, $this->userWith('course-editor', ['edit courses entries'])));
+        $this->assertTrue($this->provider->connectionAuthorized($bo, $this->userWith('both-b', ['edit content_boxes entries', 'access offers utility'])));
+    }
+
+    #[Test]
+    public function the_round_trip_connect_disconnect_undo_restores_the_exact_row_and_position(): void
+    {
+        $a = $this->box('a');
+        $b = $this->box('b');
+        $c = $this->box('c');
+        $first = ['id' => 'row-first', 'box' => [$a->id()], 'place' => 'below_video', 'note' => 'extra', 'style' => ['x' => 1]];
+        $mine = ['id' => 'row-mine', 'box' => [$b->id()], 'place' => 'before_lessons', 'headline' => 'Eigener Text', 'show_when' => 'always'];
+        $twin = ['id' => 'row-twin', 'box' => [$b->id()], 'place' => 'end'];
+        $last = ['id' => 'row-last', 'box' => [$c->id()], 'place' => 'end'];
+        $rows = [$first, $mine, $twin, $last];
+        $course = $this->course('kurs', ['course_boxes' => $rows]);
+        $conn = $this->courseBox('kurs', 'b');
+
+        $removed = $this->provider->disconnect($conn);
+
+        // Exactly one row is gone, the twin of the same box stays.
+        $this->assertSame([$first, $twin, $last], $this->reload($course)->get('course_boxes'));
+        $this->assertSame(['index' => 1, 'row' => $mine], $removed['restore']);
+
+        $this->provider->connect($conn + ['restore' => $removed['restore']]);
+
+        $this->assertSame($rows, $this->reload($course)->get('course_boxes'));
+    }
+
+    #[Test]
+    public function connect_then_disconnect_leaves_a_course_without_the_field_as_it_was(): void
+    {
+        $this->box('a');
+        $course = $this->course('kurs');
+        $conn = $this->courseBox('kurs', 'a');
+
+        $this->provider->connect($conn);
+        $this->assertNotEmpty($this->reload($course)->get('course_boxes'));
+
+        $this->provider->disconnect($conn);
+        $this->assertNull($this->reload($course)->get('course_boxes'));
+    }
+
+    #[Test]
+    public function an_undo_never_overwrites_a_row_that_took_its_id(): void
+    {
+        $a = $this->box('a');
+        $row = ['id' => 'same', 'box' => [$a->id()], 'place' => 'end'];
+        $this->course('kurs', ['course_boxes' => [$row]]);
+        $conn = $this->courseBox('kurs', 'a');
+
+        $removed = $this->provider->disconnect($conn);
+        $this->provider->connect($conn);
+
+        $other = $this->reload(Entry::query()->where('collection', 'courses')->first());
+        $other->set('course_boxes', [['id' => 'same', 'box' => [$a->id()], 'place' => 'end']])->save();
+
+        $this->expectException(\DomainException::class);
+        $this->provider->connect($conn + ['restore' => $removed['restore']]);
+    }
+
+    #[Test]
+    public function a_restore_of_a_foreign_row_is_refused(): void
+    {
+        $this->box('a');
+        $b = $this->box('b');
+        $course = $this->course('kurs');
+
+        try {
+            $this->provider->connect($this->courseBox('kurs', 'a') + ['restore' => ['index' => 0, 'row' => ['id' => 'x', 'box' => [$b->id()]]]]);
+            $this->fail('expected refusal');
+        } catch (\DomainException) {
+        }
+
+        $this->assertNull($this->reload($course)->get('course_boxes'));
+    }
+
+    #[Test]
+    public function box_to_offer_round_trip_ends_with_the_field_as_before(): void
+    {
+        $this->offer('vokale');
+        $box = $this->box('a');
+        $c = $this->boxOffer('a', 'vokale');
+
+        $this->provider->connect($c);
+        $this->provider->disconnect($c);
+
+        // Nothing to restore for a single value: the handle is the connection itself.
+        $this->assertNull($this->reload($box)->get('offer'));
+        $this->assertArrayNotHasKey('offer', $this->reload($box)->data()->all());
+    }
+
+    #[Test]
+    public function the_write_refuses_when_the_field_changed_after_the_read(): void
+    {
+        $a = $this->box('a');
+        $this->box('b');
+        $course = $this->course('kurs', ['course_boxes' => [['id' => 'r1', 'box' => [$a->id()], 'place' => 'end']]]);
+        $racing = new class extends ContentBoxMapObjects
+        {
+            public bool $changed = false;
+
+            protected function freshCourseRows(\Statamic\Contracts\Entries\Entry $course): array
+            {
+                return $this->changed ? [['id' => 'someone-else', 'box' => ['x']]] : parent::freshCourseRows($course);
+            }
+        };
+        $racing->changed = true;
+
+        try {
+            $racing->connect($this->courseBox('kurs', 'b'));
+            $this->fail('expected conflict');
+        } catch (\DomainException $e) {
+            $this->assertStringContainsString('Nothing was written', $e->getMessage());
+        }
+
+        $this->assertCount(1, $this->reload($course)->get('course_boxes'));
+    }
+
+    #[Test]
+    public function the_box_write_refuses_when_the_offer_changed_after_the_read(): void
+    {
+        $this->offer('vokale');
+        $box = $this->box('a');
+        $racing = new class extends ContentBoxMapObjects
+        {
+            protected function freshBoxOffer(\Statamic\Contracts\Entries\Entry $box): string
+            {
+                return 'andere';
+            }
+        };
+
+        $this->expectException(\DomainException::class);
+        try {
+            $racing->connect($this->boxOffer('a', 'vokale'));
+        } finally {
+            $this->assertEmpty($this->reload($box)->get('offer'));
+        }
+    }
+
+    #[Test]
+    public function the_german_texts_exist_for_the_new_messages(): void
+    {
+        foreach (['map_connect_changed', 'map_connect_restore_invalid'] as $key) {
+            $this->assertNotSame("statamic-offers::messages.$key", __("statamic-offers::messages.$key", [], 'de'));
+            $this->assertNotSame("statamic-offers::messages.$key", __("statamic-offers::messages.$key", [], 'en'));
+        }
     }
 }

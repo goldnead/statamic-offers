@@ -425,4 +425,6 @@ return [
     'map_connect_offer_empty' => 'kein Angebot',
     'map_connect_offer_connect' => 'Ab jetzt lädt der Kasten „:box“ zum Angebot „:offer“ ein.',
     'map_connect_offer_disconnect' => 'Der Kasten „:box“ lädt nicht mehr zum Angebot „:offer“ ein.',
+    'map_connect_changed' => 'Das hat sich zwischenzeitlich geändert. Es wurde nichts geschrieben. Karte neu laden und noch einmal versuchen.',
+    'map_connect_restore_invalid' => 'Der entfernte Eintrag lässt sich nicht mehr zurücksetzen.',
 ];

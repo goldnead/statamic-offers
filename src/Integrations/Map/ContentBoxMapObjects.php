@@ -230,12 +230,18 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             return false;
         }
 
+        // Source AND target: a connection changes one end and shows up at the other.
+        // Course -> box: the course entry is written, the box is the target.
+        // Box -> offer: the box entry is written; the offer is edited in the
+        // offers utility (`OffersController::authorizeAccess()`).
         if ($this->isCourseBox($c)) {
-            return (bool) $user->can('edit '.$this->courseCollection().' entries');
+            return (bool) $user->can('edit '.$this->courseCollection().' entries')
+                && (bool) $user->can('edit '.ContentBoxes::collection().' entries');
         }
 
         if ($this->isBoxOffer($c)) {
-            return (bool) $user->can('edit '.ContentBoxes::collection().' entries');
+            return (bool) $user->can('edit '.ContentBoxes::collection().' entries')
+                && (bool) $user->can('access offers utility');
         }
 
         return false;
@@ -254,41 +260,130 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
         return $this->isCourseBox($c) ? $this->previewCourseBox($c, $action) : $this->previewBoxOffer($c, $action);
     }
 
-    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    /** @param  array<string, mixed>  $c  optional `restore` of a disconnect  @return array{before:string,after:string} */
     public function connect(array $c): array
     {
         return $this->write($c, 'connect');
     }
 
-    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    /** @param  array<string, mixed>  $c  @return array{before:string,after:string,restore?:array<string,mixed>} */
     public function disconnect(array $c): array
     {
         return $this->write($c, 'disconnect');
     }
 
-    /** @param  array<string, string>  $c  @return array{before:string,after:string} */
+    /**
+     * Compare and set: the preview reads the field, the write reads it once more
+     * right before saving and refuses (nothing written) if it changed meanwhile.
+     * No lock: two saves in the same instant can still race, the window is the
+     * time between that second read and `save()`.
+     *
+     * `disconnect` of a course row returns the removed row and its position as
+     * `restore`; `connect` with `$c['restore']` puts exactly that row back.
+     *
+     * @param  array<string, mixed>  $c
+     * @return array{before:string,after:string,restore?:array<string,mixed>}
+     */
     protected function write(array $c, string $action): array
     {
         $preview = $this->connectionPreview($c, $action);
+        $result = ['before' => $preview['before'], 'after' => $preview['after']];
 
         if ($this->isCourseBox($c)) {
             $course = $this->courseEntry((string) $c['from_id']);
             $box = $this->boxEntry((string) $c['to_id']);
-            $rows = $this->courseRows($course);
+            $boxId = (string) $box->id();
+            $seen = $this->courseRows($course);
+            $rows = $seen;
 
             if ($action === 'connect') {
-                $rows[] = ['id' => Str::random(8), 'box' => [(string) $box->id()], 'place' => 'end'];
+                $restore = $c['restore'] ?? null;
+
+                if (is_array($restore)) {
+                    $row = $this->restorableRow($restore, $boxId, $rows);
+                    array_splice($rows, min(max((int) ($restore['index'] ?? count($rows)), 0), count($rows)), 0, [$row]);
+                } else {
+                    $rows[] = ['id' => Str::random(8), 'box' => [$boxId], 'place' => 'end'];
+                }
             } else {
-                $rows = array_values(array_filter($rows, fn ($row) => $this->rowBoxId($row) !== (string) $box->id()));
+                // Exactly one row: the first one that shows this box.
+                $index = null;
+
+                foreach ($rows as $i => $row) {
+                    if ($this->rowBoxId($row) === $boxId) {
+                        $index = $i;
+                        break;
+                    }
+                }
+
+                $result['restore'] = ['index' => $index, 'row' => $rows[$index]];
+                array_splice($rows, $index, 1);
             }
 
-            $course->set('course_boxes', $rows)->save();
+            if ($this->freshCourseRows($course) !== $seen) {
+                throw new \DomainException(__('statamic-offers::messages.map_connect_changed'));
+            }
+
+            // An emptied grid goes back to "no field", the state before the first connect.
+            $rows === [] ? $course->remove('course_boxes') : $course->set('course_boxes', array_values($rows));
+            $course->save();
         } else {
             $box = $this->boxEntry((string) $c['from_id']);
-            $box->set('offer', $action === 'connect' ? (string) $c['to_id'] : null)->save();
+            $seen = trim((string) $box->get('offer'));
+
+            if ($this->freshBoxOffer($box) !== $seen) {
+                throw new \DomainException(__('statamic-offers::messages.map_connect_changed'));
+            }
+
+            $action === 'connect' ? $box->set('offer', (string) $c['to_id']) : $box->remove('offer');
+            $box->save();
         }
 
-        return ['before' => $preview['before'], 'after' => $preview['after']];
+        return $result;
+    }
+
+    /**
+     * The course rows as they are stored right now, read again from the store.
+     *
+     * @return list<mixed>
+     */
+    protected function freshCourseRows(EntryContract $course): array
+    {
+        $fresh = Entry::find($course->id());
+
+        return $fresh === null ? [] : $this->courseRows($fresh);
+    }
+
+    protected function freshBoxOffer(EntryContract $box): string
+    {
+        $fresh = Entry::find($box->id());
+
+        return $fresh === null ? '' : trim((string) $fresh->get('offer'));
+    }
+
+    /**
+     * The row an undo puts back. It has to be the row of this box, and its
+     * own id must not be taken by another row in the meantime.
+     *
+     * @param  array<string, mixed>  $restore
+     * @param  list<mixed>  $rows
+     * @return array<string, mixed>
+     */
+    protected function restorableRow(array $restore, string $boxId, array $rows): array
+    {
+        $row = $restore['row'] ?? null;
+
+        if (! is_array($row) || $this->rowBoxId($row) !== $boxId) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_restore_invalid'));
+        }
+
+        $id = (string) ($row['id'] ?? '');
+
+        if ($id !== '' && collect($rows)->contains(fn ($r) => is_array($r) && (string) ($r['id'] ?? '') === $id)) {
+            throw new \DomainException(__('statamic-offers::messages.map_connect_changed'));
+        }
+
+        return $row;
     }
 
     /** @param  array<string, string>  $c  @return array{consequence:string,before:string,after:string} */
@@ -300,7 +395,8 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             ->contains(fn ($row) => $this->rowBoxId($row) === (string) $box->id());
         $names = ['course' => $this->nameOf($course), 'box' => $this->nameOf($box)];
 
-        if ($action === 'connect' && $connected) {
+        // An undo puts one exact row back, even when another row shows the same box.
+        if ($action === 'connect' && $connected && ! is_array($c['restore'] ?? null)) {
             throw new \DomainException(__('statamic-offers::messages.map_connect_box_already', $names));
         }
 
