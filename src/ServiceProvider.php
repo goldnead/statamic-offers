@@ -12,6 +12,7 @@ use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponActionsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\CouponsController;
 use Goldnead\StatamicOffers\Http\Controllers\Cp\OffersController;
 use Goldnead\StatamicOffers\Integrations\EntitlementsSeatAccess;
+use Goldnead\StatamicOffers\Integrations\Map\ContentBoxMapObjects;
 use Goldnead\StatamicOffers\Integrations\Map\OfferMapObjects;
 use Goldnead\StatamicOffers\Integrations\WebhookManager\WebhookManagerBridge;
 use Goldnead\StatamicOffers\Models\Offer;
@@ -133,6 +134,7 @@ class ServiceProvider extends AddonServiceProvider
         // erwartet. Eine Installation ohne brand-context gibt es nicht
         // (Pflicht in composer.json).
         $this->app->make(MapObjectRegistry::class)->register(OfferMapObjects::class);
+        $this->app->make(MapObjectRegistry::class)->register(ContentBoxMapObjects::class);
 
         // Aus boot() eingereiht, nicht aus bootAddon(): dort feuerte ein
         // verschachteltes `booted()` sofort, womöglich vor dem bootAddon()
