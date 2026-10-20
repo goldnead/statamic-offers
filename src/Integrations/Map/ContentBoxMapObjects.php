@@ -12,6 +12,7 @@ use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Support\ContentBoxes;
 use Illuminate\Support\Collection;
 use Statamic\Entries\Entry as EntryContract;
+use Statamic\Facades\Collection as CollectionFacade;
 use Statamic\Facades\Entry;
 
 /**
@@ -88,7 +89,7 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
      */
     protected function courseEdges(array $slugById): array
     {
-        $courses = Entry::whereCollection($this->courseCollection())
+        $courses = $this->entriesOf($this->courseCollection())
             ->filter(fn ($entry) => $entry->get('kind') !== 'material');
 
         $slugByCourseId = $courses->mapWithKeys(fn ($e) => [(string) $e->id() => (string) $e->slug()])->all();
@@ -124,7 +125,7 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             $add((string) $course->slug(), $course->get('course_boxes'), 'course field `course_boxes`');
         }
 
-        foreach (Entry::whereCollection($this->lessonCollection()) as $lesson) {
+        foreach ($this->entriesOf($this->lessonCollection()) as $lesson) {
             $raw = $lesson->get('course');
             $courseId = trim((string) (is_array($raw) ? ($raw[0] ?? '') : $raw));
             $courseSlug = $slugByCourseId[$courseId] ?? '';
@@ -144,6 +145,12 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
     {
         $edges = [];
 
+        // Einmal laden statt je Kasten: ein Angebot, viele Kästen, eine Abfrage.
+        $handles = $boxes->map(fn ($b) => trim((string) $b->get('offer')))->filter()->unique()->values()->all();
+        $offers = $handles === []
+            ? collect()
+            : Offer::query()->forBrand()->whereIn('handle', $handles)->get()->keyBy('handle');
+
         foreach ($boxes as $box) {
             $handle = trim((string) $box->get('offer'));
 
@@ -151,7 +158,7 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
                 continue;
             }
 
-            $offer = Offer::query()->forBrand()->where('handle', $handle)->first();
+            $offer = $offers->get($handle);
 
             if ($offer === null) {
                 $edges[] = new MapEdge(
@@ -194,6 +201,18 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
         return Entry::whereCollection(ContentBoxes::collection())
             ->filter(fn ($entry) => (string) $entry->slug() !== '')
             ->values();
+    }
+
+    /**
+     * Sammlung des Kurs-Addons; fehlt sie (Addon nicht installiert), ist sie leer.
+     *
+     * @return Collection<int, EntryContract>
+     */
+    protected function entriesOf(string $handle)
+    {
+        return CollectionFacade::findByHandle($handle) === null
+            ? collect()
+            : Entry::whereCollection($handle);
     }
 
     protected function courseCollection(): string

@@ -10,6 +10,11 @@
   through the products of that offer). A box id or offer that names nothing draws a broken line with the written text.
   The card shows no number: a box has no counting rule of its own.
 
+### Fixed
+
+- The box lines of the funnels map load the offers of all boxes in one query instead of one per box, and no longer
+  fail when the course add-on's collections do not exist: the boxes still appear, only the course lines are missing.
+
 ## 1.19.0 — 2026-10-19
 
 ### Added

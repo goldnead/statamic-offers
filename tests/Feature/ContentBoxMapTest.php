@@ -8,6 +8,7 @@ use Goldnead\BrandContext\Map\MapPeriod;
 use Goldnead\StatamicOffers\Integrations\Map\ContentBoxMapObjects;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Tests\TestCase;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\Test;
 use Statamic\Facades\Collection;
 use Statamic\Facades\Entry;
@@ -198,5 +199,44 @@ class ContentBoxMapTest extends TestCase
         $this->course('handout', ['kind' => 'material', 'course_boxes' => [['box' => [$box->id()]]]]);
 
         $this->assertSame([], $this->edges());
+    }
+
+    #[Test]
+    public function without_the_course_collections_the_boxes_still_appear_and_nothing_crashes(): void
+    {
+        Collection::findByHandle('courses')->delete();
+        Collection::findByHandle('course_lessons')->delete();
+        $this->offer('stimmbildung', ['products' => ['probe-zugang']]);
+        $this->box('mit-angebot', ['offer' => 'stimmbildung']);
+
+        $this->assertCount(1, $this->provider->objects());
+        $this->assertSame('mit-angebot', $this->provider->find('mit-angebot')->id);
+
+        $edges = $this->edges();
+        $this->assertNotEmpty($edges);
+        $this->assertSame(['content_box'], array_values(array_unique(array_map(fn (MapEdge $e) => $e->fromType, $edges))));
+    }
+
+    #[Test]
+    public function the_offers_of_all_boxes_are_loaded_once_not_per_box(): void
+    {
+        $this->offer('eins', ['products' => ['p1']]);
+        $this->offer('zwei', ['products' => ['p2']]);
+        $this->box('a', ['offer' => 'eins']);
+        $this->box('b', ['offer' => 'zwei']);
+        $this->box('c', ['offer' => 'eins']);
+        $this->box('d', ['offer' => 'tippfehler']);
+
+        $offerQueries = 0;
+        DB::listen(function ($q) use (&$offerQueries) {
+            if (str_contains($q->sql, (new Offer)->getTable())) {
+                $offerQueries++;
+            }
+        });
+
+        $edges = $this->edges();
+
+        $this->assertCount(7, $edges);
+        $this->assertSame(1, $offerQueries);
     }
 }
