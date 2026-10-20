@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `OfferMapObjects::details()`: the funnels map's side panel shows the offer's price, its paid orders and its accepted seats over the period. Orders follow the counting rule of the product card in statamic-products (paid, `paid_at` in the period and not in the future, current brand, each payment once); lines with a suffix (`offer:x:raten3`) belong to the offer, a setup fee alone is no sale. It is a count, never a sum across currencies. A row is left out when its source is missing (no price, no payments tables, never a seat pool).
+
 ## 1.20.0 — 2026-10-20
 
 ### Added

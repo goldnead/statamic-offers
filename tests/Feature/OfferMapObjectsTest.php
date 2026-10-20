@@ -8,8 +8,12 @@ use Goldnead\StatamicOffers\Integrations\Map\OfferMapObjects;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Tests\TestCase;
+use Goldnead\StatamicPayments\Models\Payment;
+use Goldnead\StatamicPayments\Models\PaymentItem;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\Test;
 
 /**
@@ -190,5 +194,105 @@ class OfferMapObjectsTest extends TestCase
         // Das erste Angebot hat nie ein Kontingent gehabt: keine Zahl, keine Null.
         $this->assertNull($this->provider->metric('stimmbildung', MapPeriod::lastDays(30)));
         $this->assertSame(1, $this->provider->metric('andere', MapPeriod::lastDays(30))->value);
+    }
+
+    /**
+     * A payment with one line per given line product. `$payment` overrides
+     * columns of the payment.
+     *
+     * @param  list<string>  $lines  line products, e.g. `offer:stimmbildung`
+     */
+    protected function order(array $lines, array $payment = []): Payment
+    {
+        $order = Payment::create(array_merge([
+            'product' => $lines[0] ?? 'etwas-anderes',
+            'provider_id' => 'tr_'.uniqid(),
+            'amount_cent' => 39000,
+            'currency' => 'EUR',
+            'status' => Payment::STATUS_PAID,
+            'provider' => 'fake',
+            'paid_at' => Carbon::now()->subDay(),
+        ], $payment));
+
+        foreach ($lines as $index => $handle) {
+            PaymentItem::create([
+                'payment_id' => $order->id,
+                'product' => $handle,
+                'name' => $handle,
+                'amount_cent' => 39000,
+                'kind' => $index === 0 ? PaymentItem::KIND_PRIMARY : PaymentItem::KIND_BUMP,
+            ]);
+        }
+
+        return $order;
+    }
+
+    #[Test]
+    public function details_show_price_paid_orders_and_seats_of_the_period(): void
+    {
+        $offer = $this->offer();
+        $this->offer(['handle' => 'andere', 'name' => 'Andere']);
+        $pool = $this->pool($offer);
+        Seat::create(['pool_id' => $pool->id, 'email' => 'a@chor.example', 'token' => bin2hex(random_bytes(16)), 'status' => Seat::STATUS_CLAIMED, 'claimed_at' => Carbon::now()->subDays(2)]);
+
+        $this->order(['offer:stimmbildung']);
+        // A purchase with an instalment suffix is the same sale; another currency is still one order.
+        $this->order(['offer:stimmbildung:raten3'], ['currency' => 'CHF']);
+        // One payment with two lines of the offer counts once; a setup fee alone is no sale.
+        $this->order(['noten-paket', 'offer:stimmbildung', 'offer:stimmbildung:=2500']);
+        $this->order(['offer:stimmbildung:+setup']);
+        // Not counted: unpaid, outside the period, in the future, another offer.
+        $this->order(['offer:stimmbildung'], ['status' => Payment::STATUS_OPEN]);
+        $this->order(['offer:stimmbildung'], ['paid_at' => Carbon::now()->subDays(60)]);
+        $this->order(['offer:stimmbildung'], ['paid_at' => Carbon::now()->addDay()]);
+        $this->order(['offer:andere']);
+
+        $details = $this->provider->details('stimmbildung', MapPeriod::lastDays(30));
+
+        $this->assertCount(1, $details);
+        $this->assertSame('facts', $details[0]['kind']);
+        $this->assertSame([
+            ['label' => 'Price', 'value' => '390.00 EUR', 'href' => null],
+            ['label' => 'Paid orders (last 30 days)', 'value' => '3', 'href' => null],
+            ['label' => 'Seats accepted (last 30 days)', 'value' => '1', 'href' => null],
+        ], $details[0]['rows']);
+    }
+
+    #[Test]
+    public function details_omit_rows_whose_source_is_missing(): void
+    {
+        // No price, no seats ever, but the payments table is there: only orders.
+        $this->offer(['handle' => 'ohne-preis', 'amount_cent' => null, 'product' => 'unbekannt']);
+
+        $rows = $this->provider->details('ohne-preis', MapPeriod::lastDays(30))[0]['rows'];
+
+        $this->assertSame([['label' => 'Paid orders (last 30 days)', 'value' => '0', 'href' => null]], $rows);
+    }
+
+    #[Test]
+    public function details_show_only_price_and_seats_when_the_payments_table_is_missing(): void
+    {
+        $offer = $this->offer();
+        $pool = $this->pool($offer);
+        Seat::create(['pool_id' => $pool->id, 'email' => 'a@chor.example', 'token' => bin2hex(random_bytes(16)), 'status' => Seat::STATUS_CLAIMED, 'claimed_at' => Carbon::now()->subDays(2)]);
+
+        // Renamed, not dropped, so the migrations can still roll back in teardown.
+        Schema::rename('payments', 'payments_away');
+        OfferSales::forget();
+
+        try {
+            $rows = $this->provider->details('stimmbildung', MapPeriod::lastDays(30))[0]['rows'];
+        } finally {
+            Schema::rename('payments_away', 'payments');
+            OfferSales::forget();
+        }
+
+        $this->assertSame(['Price', 'Seats accepted (last 30 days)'], array_column($rows, 'label'));
+    }
+
+    #[Test]
+    public function details_of_an_unknown_offer_are_null(): void
+    {
+        $this->assertNull($this->provider->details('gibt-es-nicht', MapPeriod::lastDays(30)));
     }
 }

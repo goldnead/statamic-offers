@@ -11,6 +11,14 @@ use Goldnead\BrandContext\Map\MapPeriod;
 use Goldnead\StatamicOffers\Models\Offer;
 use Goldnead\StatamicOffers\Models\Seat;
 use Goldnead\StatamicOffers\Models\SeatPool;
+use Goldnead\StatamicOffers\Support\OfferHandle;
+use Goldnead\StatamicOffers\Support\OfferSales;
+use Goldnead\StatamicPayments\Models\Payment;
+use Goldnead\StatamicPayments\Support\Brands;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * Angebote für die Funnel-Karte.
@@ -84,10 +92,72 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
     {
         $offer = $this->offerFor($id);
 
+        $count = $offer === null ? null : $this->seatsAccepted($offer, $period);
+
+        if ($count === null) {
+            return null;
+        }
+
+        return new MapMetric(
+            value: $count,
+            what: __('statamic-offers::messages.map_metric_seats'),
+            period: $period,
+        );
+    }
+
+    /**
+     * Optionale Blöcke für das Seitenfenster der Karte (Landkarte v4, Teil 3):
+     * ein Faktenblock mit Preis, bezahlten Bestellungen und angenommenen
+     * Plätzen im Zeitraum. Jede Zeile fehlt, wenn ihre Quelle fehlt: kein Preis,
+     * keine Zahlungstabellen, nie ein Kontingent. Null bei unbekanntem Angebot.
+     *
+     * Die Bestellungen sind eine Anzahl, keine Summe, also werden Währungen
+     * nicht addiert.
+     *
+     * @return list<array<string, mixed>>|null
+     */
+    public function details(string $id, MapPeriod $period): ?array
+    {
+        $offer = $this->offerFor($id);
+
         if ($offer === null) {
             return null;
         }
 
+        $rows = [];
+
+        $price = $this->detail($offer);
+
+        if ($price !== null) {
+            $rows[] = ['label' => __('statamic-offers::messages.map_detail_price'), 'value' => Str::limit($price, 120), 'href' => null];
+        }
+
+        $orders = $this->paidOrders($offer, $period);
+
+        if ($orders !== null) {
+            $rows[] = [
+                'label' => __('statamic-offers::messages.map_detail_orders', ['period' => $period->label()]),
+                'value' => (string) $orders,
+                'href' => null,
+            ];
+        }
+
+        $seats = $this->seatsAccepted($offer, $period);
+
+        if ($seats !== null) {
+            $rows[] = [
+                'label' => __('statamic-offers::messages.map_detail_seats', ['period' => $period->label()]),
+                'value' => (string) $seats,
+                'href' => null,
+            ];
+        }
+
+        return $rows === [] ? null : [['kind' => 'facts', 'title' => null, 'rows' => $rows]];
+    }
+
+    /** Angenommene Plätze im Zeitraum; null ohne Kontingent. Die Regel der Karten-Zahl. */
+    protected function seatsAccepted(Offer $offer, MapPeriod $period): ?int
+    {
         $poolIds = SeatPool::query()
             ->where('offer', $offer->handle)
             ->where('brand_id', (int) $offer->brand_id)
@@ -97,17 +167,57 @@ class OfferMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             return null;
         }
 
-        $count = Seat::query()
+        return Seat::query()
             ->whereIn('pool_id', $poolIds)
             ->whereNotNull('claimed_at')
             ->whereBetween('claimed_at', [$period->from, $period->to])
             ->count();
+    }
 
-        return new MapMetric(
-            value: $count,
-            what: __('statamic-offers::messages.map_metric_seats'),
-            period: $period,
-        );
+    /**
+     * Bezahlte Bestellungen mit einer Zeile dieses Angebots im Zeitraum, nach
+     * der Regel der Produkt-Karte in statamic-products: bezahlt, `paid_at` im
+     * Zeitraum und nicht in der Zukunft, in der aktuellen Marke, jede Zahlung
+     * einmal. Zeilen mit jedem Zusatz (`offer:x:raten3`) gehören zum Angebot,
+     * die Einrichtungsgebühr allein ist kein Verkauf (wie in {@see OfferSales}).
+     * Null ohne die Zahlungstabellen.
+     */
+    protected function paidOrders(Offer $offer, MapPeriod $period): ?int
+    {
+        if (! Schema::hasTable('payments') || ! Schema::hasTable('payment_items')) {
+            return null;
+        }
+
+        $basis = OfferHandle::of($offer);
+        $like = addcslashes($basis.':', '%_\\').'%';
+        $line = fn ($q) => $q->where('payment_items.product', $basis)->orWhere('payment_items.product', 'like', $like);
+
+        $ids = Brands::only(Payment::query(), Brands::readerId())
+            ->where('status', Payment::STATUS_PAID)
+            ->whereNotNull('paid_at')
+            ->where('paid_at', '>=', $period->from)
+            ->where('paid_at', '<', $period->to)
+            ->where('paid_at', '<=', Carbon::now())
+            ->whereExists(fn ($q) => $q->from('payment_items')
+                ->whereColumn('payment_items.payment_id', 'payments.id')
+                ->where($line))
+            ->pluck('id');
+
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        $paid = [];
+
+        foreach (DB::table('payment_items')->whereIn('payment_id', $ids)->where($line)->get(['payment_id', 'product']) as $row) {
+            $parts = OfferHandle::parse((string) $row->product);
+
+            if ($parts !== null && $parts->offer === $offer->handle && $parts->countsAsSale()) {
+                $paid[$row->payment_id] = true;
+            }
+        }
+
+        return count($paid);
     }
 
     /**
