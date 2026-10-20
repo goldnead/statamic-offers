@@ -176,6 +176,17 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
                 continue;
             }
 
+            // The offer itself: the line a drawn connection writes and can release.
+            $edges[] = new MapEdge(
+                fromType: $this->type(),
+                fromId: (string) $box->slug(),
+                toType: 'offer',
+                toId: $handle,
+                kind: 'invites_to',
+                label: __('statamic-offers::messages.map_edge_invites_to'),
+                derivedFrom: 'field `offer` of the box',
+            );
+
             foreach ($offer->productHandles() as $slug) {
                 if ((string) $slug === '') {
                     continue;
