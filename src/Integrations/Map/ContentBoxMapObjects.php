@@ -325,7 +325,7 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
             }
 
             // An emptied grid goes back to "no field", the state before the first connect.
-            $rows === [] ? $course->remove('course_boxes') : $course->set('course_boxes', array_values($rows));
+            $rows === [] ? $course->remove('course_boxes') : $course->set('course_boxes', $rows);
             $course->save();
         } else {
             $box = $this->boxEntry((string) $c['from_id']);
@@ -351,14 +351,14 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
     {
         $fresh = Entry::find($course->id());
 
-        return $fresh === null ? [] : $this->courseRows($fresh);
+        return $fresh instanceof EntryContract ? $this->courseRows($fresh) : [];
     }
 
     protected function freshBoxOffer(EntryContract $box): string
     {
         $fresh = Entry::find($box->id());
 
-        return $fresh === null ? '' : trim((string) $fresh->get('offer'));
+        return $fresh instanceof EntryContract ? trim((string) $fresh->get('offer')) : '';
     }
 
     /**
@@ -386,7 +386,7 @@ class ContentBoxMapObjects implements ProvidesMapEdges, ProvidesMapObjects
         return $row;
     }
 
-    /** @param  array<string, string>  $c  @return array{consequence:string,before:string,after:string} */
+    /** @param  array<string, mixed>  $c  @return array{consequence:string,before:string,after:string} */
     protected function previewCourseBox(array $c, string $action): array
     {
         $course = $this->courseEntry((string) $c['from_id']);
