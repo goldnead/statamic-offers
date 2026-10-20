@@ -4,6 +4,17 @@
 
 ### Added
 
+- Drawing connections on the funnels map: the content box provider can now write two pairs itself, course to box
+  (adds or removes the row in the course's `course_boxes` grid) and box to offer (sets or clears the box's `offer`,
+  only when empty). Each is refused with a plain reason if the target is already taken, needs the permission to edit
+  the entries of the collection it changes, and has a plain-language consequence (en, de). Box to product is not offered.
+  Needs `statamic-brand-context` 1.19 (unreleased): older versions simply offer no connections.
+  Both ends are checked: course to box needs "edit courses entries" and "edit content_boxes entries", box to
+  offer needs "edit content_boxes entries" and "access offers utility". Releasing a course row removes exactly one
+  row and hands it back, so an undo restores the same row (id, place, all fields, position), also with several rows
+  of the same box. Writes re-read the field right before saving (compare and set) and refuse with "nothing was
+  written" if it changed meanwhile.
+
 - Content boxes on the funnels map (`statamic-brand-context` 1.18): a box can be picked as a map object (type
   `content_box`, keyed by its slug). New lines, each read from a field and never stored: course to box (the box grids
   `course_boxes`, `lesson_boxes` and `video_hints` of a course and its lessons) and box to product (the box's `offer`,

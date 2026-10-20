@@ -169,14 +169,17 @@ class ContentBoxMapTest extends TestCase
 
         $edges = $this->edges();
 
-        $this->assertCount(2, $edges);
-        $this->assertSame('content_box', $edges[0]->fromType);
-        $this->assertSame('mit-angebot', $edges[0]->fromId);
-        $this->assertSame('product', $edges[0]->toType);
-        $this->assertSame('noten-paket', $edges[0]->toId);
-        $this->assertSame('invites_to', $edges[0]->kind);
-        $this->assertSame('field `offer` of the box', $edges[0]->derivedFrom);
-        $this->assertSame('probe-zugang', $edges[1]->toId);
+        // First the offer itself (the line a drawn connection writes), then its products.
+        $this->assertCount(3, $edges);
+        $this->assertSame('offer', $edges[0]->toType);
+        $this->assertSame('stimmbildung', $edges[0]->toId);
+        $this->assertSame('content_box', $edges[1]->fromType);
+        $this->assertSame('mit-angebot', $edges[1]->fromId);
+        $this->assertSame('product', $edges[1]->toType);
+        $this->assertSame('noten-paket', $edges[1]->toId);
+        $this->assertSame('invites_to', $edges[1]->kind);
+        $this->assertSame('field `offer` of the box', $edges[1]->derivedFrom);
+        $this->assertSame('probe-zugang', $edges[2]->toId);
     }
 
     #[Test]
@@ -236,7 +239,7 @@ class ContentBoxMapTest extends TestCase
 
         $edges = $this->edges();
 
-        $this->assertCount(7, $edges);
+        $this->assertCount(10, $edges);
         $this->assertSame(1, $offerQueries);
     }
 }
