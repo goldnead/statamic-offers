@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.21.0 — 2026-10-21
+
 ### Added
 
 - `OfferMapObjects::detailsAuthorized()`: the side panel is only opened for users with `access payments utility` (the right that shows the orders in the Control Panel), or `access offers utility` when statamic-payments is missing; no user, no panel. Needs statamic-brand-context 1.20.
