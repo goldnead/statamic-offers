@@ -140,4 +140,83 @@ class SetupGuardTest extends TestCase
         $this->assertSame('statamic-offers::Offers/Index', $offers->viewData('page')['component']);
         $this->assertSame('statamic-offers::Coupons/Index', $coupons->viewData('page')['component']);
     }
+
+    /**
+     * The detail pages bind their model before the controller method starts,
+     * so the guard has to stand in front of that query, not inside the method.
+     */
+    #[Test]
+    public function the_offer_detail_page_shows_the_setup_screen_when_its_table_is_missing(): void
+    {
+        $this->withUnmigratedDatabase(function () {
+            $page = $this->actingAs($this->user())
+                ->get(cp_route('utilities.offers.show', ['offer' => 1]))
+                ->assertOk()
+                ->viewData('page');
+
+            $this->assertSame('statamic-offers::SetupRequired', $page['component']);
+            $this->assertContains('offers', $page['props']['tables']);
+        });
+    }
+
+    #[Test]
+    public function the_offer_qr_download_shows_the_setup_screen_when_its_table_is_missing(): void
+    {
+        $this->withUnmigratedDatabase(function () {
+            $page = $this->actingAs($this->user())
+                ->get(cp_route('utilities.offers.qr', ['offer' => 1, 'format' => 'svg']))
+                ->assertOk()
+                ->viewData('page');
+
+            $this->assertSame('statamic-offers::SetupRequired', $page['component']);
+        });
+    }
+
+    #[Test]
+    public function a_stranger_is_sent_to_the_login_on_the_offer_detail_and_never_sees_the_setup_screen(): void
+    {
+        $this->withUnmigratedDatabase(function () {
+            $this->get(cp_route('utilities.offers.show', ['offer' => 1]))
+                ->assertRedirect();
+        });
+    }
+
+    #[Test]
+    public function a_migrated_install_still_404s_an_unknown_offer(): void
+    {
+        $this->actingAs($this->user())
+            ->get(cp_route('utilities.offers.show', ['offer' => 999]))
+            ->assertNotFound();
+    }
+
+    #[Test]
+    public function the_coupon_detail_route_shows_the_setup_screen_when_its_tables_are_missing(): void
+    {
+        $this->withUnmigratedDatabase(function () {
+            $page = $this->actingAs($this->user())
+                ->get(cp_route('utilities.coupons.qr', ['coupon' => 1, 'format' => 'svg']))
+                ->assertOk()
+                ->viewData('page');
+
+            $this->assertSame('statamic-offers::SetupRequired', $page['component']);
+            $this->assertContains('offer_coupons', $page['props']['tables']);
+        });
+    }
+
+    #[Test]
+    public function a_stranger_is_sent_to_the_login_on_the_coupon_detail_and_never_sees_the_setup_screen(): void
+    {
+        $this->withUnmigratedDatabase(function () {
+            $this->get(cp_route('utilities.coupons.qr', ['coupon' => 1, 'format' => 'svg']))
+                ->assertRedirect();
+        });
+    }
+
+    #[Test]
+    public function a_migrated_install_still_404s_an_unknown_coupon(): void
+    {
+        $this->actingAs($this->user())
+            ->get(cp_route('utilities.coupons.qr', ['coupon' => 999, 'format' => 'svg']))
+            ->assertNotFound();
+    }
 }

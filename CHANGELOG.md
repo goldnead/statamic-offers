@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Control Panel: the detail pages (offer edit, update, delete, QR download, seat actions; coupon update, delete, QR download) show the same setup screen as the listing when the addon's tables are missing, instead of a query error (HTTP 500).
+
+### Upgrading
+
+- Requires statamic-brand-context 1.27 or newer. No migration, no new config key.
+
 ## 1.21.0 — 2026-10-21
 
 ### Added

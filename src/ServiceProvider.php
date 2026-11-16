@@ -2,6 +2,7 @@
 
 namespace Goldnead\StatamicOffers;
 
+use Goldnead\BrandContext\Http\Middleware\GuardSetup;
 use Goldnead\BrandContext\Map\MapObjectRegistry;
 use Goldnead\BrandContext\Settings\SettingsRegistry;
 use Goldnead\StatamicOffers\Actions\ActivateCoupon;
@@ -23,6 +24,7 @@ use Goldnead\StatamicOffers\Support\DefaultBoxAudience;
 use Goldnead\StatamicOffers\Support\OfferHandle;
 use Goldnead\StatamicOffers\Support\SeatPools;
 use Goldnead\StatamicOffers\Support\Settings;
+use Goldnead\StatamicOffers\Support\Setup;
 use Goldnead\StatamicPayments\Cp\SuiteNav;
 use Goldnead\StatamicPayments\Integrations\EntitlementsBridge;
 use Goldnead\StatamicPayments\Support\Catalogue;
@@ -809,6 +811,11 @@ class ServiceProvider extends AddonServiceProvider
             ->description(__('statamic-offers::messages.coupons_utility_description'))
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
+                // Die Detailrouten binden `{coupon}` schon vor dem Controller
+                // (Route-Model-Binding), also vor jeder Wache im Controller.
+                // Die Middleware steht davor und fragt dieselbe Setup-Wache.
+                $guard = GuardSetup::using(Setup::class, 'statamic-offers::messages.coupons_utility_nav', 'offer_coupons', 'offers');
+
                 // Before the `{coupon}` routes, or "actions" is read as a
                 // coupon id on the way in.
                 $router->post('actions', [CouponActionsController::class, 'run'])->name('actions');
@@ -820,10 +827,15 @@ class ServiceProvider extends AddonServiceProvider
                 // QR-Erzeuger hinter dem Control Panel.
                 $router->get('{coupon}/qr.{format}', [CouponsController::class, 'qr'])
                     ->where('format', 'svg|png')
+                    ->middleware($guard)
                     ->name('qr');
                 $router->post('/', [CouponsController::class, 'store'])->name('store');
-                $router->patch('{coupon}', [CouponsController::class, 'update'])->name('update');
-                $router->delete('{coupon}', [CouponsController::class, 'destroy'])->name('destroy');
+                $router->patch('{coupon}', [CouponsController::class, 'update'])
+                    ->middleware($guard)
+                    ->name('update');
+                $router->delete('{coupon}', [CouponsController::class, 'destroy'])
+                    ->middleware($guard)
+                    ->name('destroy');
             });
     }
 
@@ -837,6 +849,12 @@ class ServiceProvider extends AddonServiceProvider
             ->description(__('statamic-offers::messages.utility_description'))
             ->docsUrl('https://github.com/goldnead/statamic-offers#readme')
             ->routes(function ($router) {
+                // Die Detailrouten binden ihre Modelle vor dem Controller
+                // (Route-Model-Binding, Seats und Angebot), also vor jeder
+                // Wache im Controller. Die Middleware steht davor und fragt
+                // dieselbe Setup-Wache wie die Liste.
+                $guard = GuardSetup::using(Setup::class, 'statamic-offers::messages.utility_nav', 'offers');
+
                 // Kein `{offer}/edit` und kein Stack: die Detailseite ist das
                 // Formular, wie beim Collection-Entry. `new` steht vor
                 // `{offer}`, sonst liest der Router es als Angebotsnummer.
@@ -852,18 +870,27 @@ class ServiceProvider extends AddonServiceProvider
                 // Vor `{offer}`, sonst liest der Router „seats" als Angebot.
                 $router->post('seats/{pool}/resend', [OffersController::class, 'resendSeats'])
                     ->whereNumber('pool')
+                    ->middleware($guard)
                     ->name('seats.resend');
                 $router->post('seats/{pool}/{seat}/revoke', [OffersController::class, 'revokeSeat'])
                     ->whereNumber('pool')
                     ->whereNumber('seat')
+                    ->middleware($guard)
                     ->name('seats.revoke');
                 // Der QR-Code des Kurzlinks, als Download.
                 $router->get('{offer}/qr.{format}', [OffersController::class, 'qr'])
                     ->where('format', 'svg|png')
+                    ->middleware($guard)
                     ->name('qr');
-                $router->get('{offer}', [OffersController::class, 'show'])->name('show');
-                $router->patch('{offer}', [OffersController::class, 'update'])->name('update');
-                $router->delete('{offer}', [OffersController::class, 'destroy'])->name('destroy');
+                $router->get('{offer}', [OffersController::class, 'show'])
+                    ->middleware($guard)
+                    ->name('show');
+                $router->patch('{offer}', [OffersController::class, 'update'])
+                    ->middleware($guard)
+                    ->name('update');
+                $router->delete('{offer}', [OffersController::class, 'destroy'])
+                    ->middleware($guard)
+                    ->name('destroy');
             });
     }
 }
