@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.21.1 — 2026-11-16
+
+### Changed
+
+- The package download no longer contains `art/` and `MARKETPLACE.md` (`export-ignore`).
 
 ### Fixed
 
