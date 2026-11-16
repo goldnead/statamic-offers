@@ -8,6 +8,7 @@ use Goldnead\StatamicOffers\Support\OfferSales;
 use Goldnead\StatamicOffers\Tests\Support\FakeGateway;
 use Goldnead\StatamicPayments\Contracts\PaymentGateway;
 use Goldnead\StatamicPayments\Support\Catalogue;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Statamic\Testing\AddonTestCase;
 use Statamic\Testing\Concerns\PreventsSavingStacheItemsToDisk;
@@ -68,6 +69,36 @@ abstract class TestCase extends AddonTestCase
         return $this->get(cp_route('utilities.offers.show', ['offer' => $offer->id]))
             ->assertOk()
             ->viewData('page')['props']['offer'];
+    }
+
+    /**
+     * Runs `$work` against a second, empty in-memory SQLite connection on which
+     * nothing has been migrated. Tests that need "the tables are not there" use
+     * this instead of renaming or dropping tables on the real connection: DDL
+     * commits implicitly under MySQL, so the rollback of RefreshDatabase and
+     * Testbench would run into nothing.
+     */
+    protected function withUnmigratedDatabase(callable $work): mixed
+    {
+        config()->set('database.connections.unmigrated', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => false,
+        ]);
+
+        $previous = (string) config('database.default');
+
+        config()->set('database.default', 'unmigrated');
+        DB::setDefaultConnection('unmigrated');
+
+        try {
+            return $work();
+        } finally {
+            config()->set('database.default', $previous);
+            DB::setDefaultConnection($previous);
+            DB::purge('unmigrated');
+        }
     }
 
     protected function tearDown(): void
