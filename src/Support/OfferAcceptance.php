@@ -69,7 +69,11 @@ class OfferAcceptance
             Log::error('statamic-offers: the '.$what.' moment failed; the purchase is unaffected.', [
                 'payment_id' => $payment->getKey(),
                 'offer' => $offer,
-                'exception' => $e->getMessage(),
+                // Die Exception selbst, nicht nur ihre Meldung: Laravel schreibt
+                // dann Datei, Zeile und Stack mit. Kein eigener Retry, payments
+                // stellt „bezahlt" bei einem Fehler weiter oben ohnehin neu zu,
+                // und jeder Moment ist idempotent.
+                'exception' => $e,
             ]);
         }
     }

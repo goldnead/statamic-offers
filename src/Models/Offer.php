@@ -976,9 +976,9 @@ class Offer extends Model
      * checkout, and both may pay. For a contingent where one unit too many is
      * a real problem, set the limit with a reserve.
      *
-     * With the payment tables missing there is nothing to count against, and
-     * the honest answer is "no limit can be enforced" — returned as null, with
-     * the log line `OfferSales` writes once per request.
+     * With the payment tables missing there is nothing to count against. An
+     * offer with a limit then reads as sold out (0), with an error in the log
+     * once per request; one without a limit stays null.
      */
     public function remainingQuantity(): ?int
     {
@@ -988,8 +988,14 @@ class Offer extends Model
 
         $sold = OfferSales::sold($this);
 
+        // Ohne Zahlungstabellen kann niemand nachzaehlen. Bis 1.21.1 hiess das
+        // „unbegrenzt", also das Gegenteil dessen, was ein Kontingent will.
+        // Jetzt gilt es als ausverkauft, laut im Log. Ohne die Tabellen kann
+        // payments ohnehin nicht kassieren, verloren geht dabei kein Verkauf.
         if ($sold === null) {
-            return null;
+            OfferSales::reportUncheckedLimit($this);
+
+            return 0;
         }
 
         return max(0, $this->quantity_limit - $sold);

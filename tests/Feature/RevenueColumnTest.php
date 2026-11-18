@@ -124,10 +124,14 @@ class RevenueColumnTest extends TestCase
             Log::shouldReceive('notice')
                 ->once()
                 ->withArgs(fn (string $message) => str_contains($message, 'payment tables are missing'));
+            Log::shouldReceive('error')
+                ->once()
+                ->withArgs(fn (string $message) => str_contains($message, 'quantity limit'));
 
-            // No limit can be enforced, so none is claimed.
-            $this->assertNull($offer->remainingQuantity());
-            $this->assertTrue($offer->isSellable());
+            // Seit 1.22: ein Kontingent, das niemand pruefen kann, wird nicht
+            // verkauft (bis 1.21.1 galt es als unbegrenzt).
+            $this->assertSame(0, $offer->remainingQuantity());
+            $this->assertFalse($offer->isSellable());
 
             $response = $this->actingAs($this->user())->getJson('/cp/utilities/offers');
 
