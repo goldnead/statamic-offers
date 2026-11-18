@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.22.0 — 2026-11-18
+
+### Changed
+
+- **A fixed-amount coupon needs a currency.** New fixed-amount coupons must carry one (Control Panel form, bulk creation and command). Existing coupons without a currency apply in `statamic-payments.currency`, so codes already handed out keep working. A price without a currency gets no fixed discount, also not on later payments (`Offers::recurringDiscountCent`). Before, a coupon without a currency skipped the check in `Coupon::apply()` and discounted every currency.
+- `Offer::remainingQuantity()`: with `quantity_limit` and without the payment tables the offer counts as sold out (0) instead of unlimited, with one error per request. Without a limit it stays null.
+- Requires statamic-payments 1.17 or newer (`Checkout::resume`).
+
+### Fixed
+
+- A coupon redemption comes back when the payment ends without money. A listener on `PaymentFailed` (once per payment: failed, expired, canceled) gives the redemption back; before, expired, failed and canceled payments used up `max_uses`. Resumed payments (`meta.resumed_from`) give nothing back and count on `paid`, as does a payment that is paid after an error. Subscription cycles never count. Without `offer_coupon_redemptions` nothing changes. If `claim()` fails, the basket logs a warning, calculates without the code from there and reports it through `couponLost()`.
+- A failing moment of an accepted offer is logged with its stack trace instead of only its message. No retry of its own: payments redelivers "paid" and the moments are idempotent.
+
+### Upgrading
+
+- No migration, no new config key.
+
 ## 1.21.1 — 2026-11-16
 
 ### Changed
