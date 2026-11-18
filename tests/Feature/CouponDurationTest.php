@@ -96,7 +96,8 @@ class CouponDurationTest extends TestCase
         $terms = ['code' => 'X', 'percent' => null, 'amount_cent' => 5000, 'currency' => null,
             'duration' => Coupon::DURATION_FOREVER, 'cycles' => null];
 
-        $this->assertSame(2000, Offers::recurringDiscountCent($terms, 7, 2000));
+        // Mit Waehrung: seit 1.22 bekommt ein Preis ohne Waehrung keinen Festbetrag.
+        $this->assertSame(2000, Offers::recurringDiscountCent($terms, 7, 2000, 'EUR'));
     }
 
     #[Test]

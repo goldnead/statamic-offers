@@ -182,7 +182,7 @@ class Coupon extends Model
             'code' => $this->code,
             'percent' => $this->percent,
             'amount_cent' => $this->percent === null ? $this->amount_cent : null,
-            'currency' => $this->percent === null && $this->currency ? mb_strtoupper($this->currency) : null,
+            'currency' => $this->percent === null ? $this->fixedCurrency() : null,
             'duration' => $this->duration(),
             'cycles' => $this->duration() === self::DURATION_REPEATING ? max(1, (int) $this->duration_cycles) : null,
         ];
@@ -291,11 +291,31 @@ class Coupon extends Model
 
         // A fixed discount in the wrong currency is not applied at all. Taking
         // 10 off a price in another currency is arithmetic that means nothing.
-        if ($this->currency !== null && $currency !== null && mb_strtoupper($this->currency) !== mb_strtoupper($currency)) {
+        // Bis 1.21.1 fiel die Pruefung weg, sobald eine Seite fehlte: ein Code
+        // ohne Waehrung nahm 10 von Franken wie von Euro. Jetzt hat der Code
+        // immer eine (`fixedCurrency()`), und ein Preis ohne Waehrung bekommt
+        // keinen Festbetrag.
+        if ($currency === null || $this->fixedCurrency() !== mb_strtoupper($currency)) {
             return $amountCent;
         }
 
         return max(0, $amountCent - (int) $this->amount_cent);
+    }
+
+    /**
+     * Die Waehrung eines Festbetrags, in Grossbuchstaben.
+     *
+     * Ein Bestandsgutschein ohne Waehrung (gespeichert, bevor das Formular sie
+     * verlangte) gilt in der Waehrung des Shops: das Formular hat sie immer
+     * vorgeschlagen, und ein verteilter Code soll nicht still aufhoeren zu wirken.
+     */
+    public function fixedCurrency(): string
+    {
+        $own = is_string($this->currency) && trim($this->currency) !== ''
+            ? $this->currency
+            : (string) config('statamic-payments.currency', 'EUR');
+
+        return mb_strtoupper($own);
     }
 
     /**

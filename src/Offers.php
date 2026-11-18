@@ -217,10 +217,13 @@ final class Offers
         }
 
         // Derselbe Grundsatz wie in `Coupon::apply()`: ein fester Betrag in
-        // einer anderen Waehrung ist Arithmetik ohne Bedeutung.
+        // einer anderen Waehrung ist Arithmetik ohne Bedeutung. Ohne Waehrung
+        // eingefroren (Abo von vor 1.22) heisst: die des Shops; ein Preis ohne
+        // Waehrung bekommt keinen Festbetrag.
         $eigene = $terms['currency'] ?? null;
+        $eigene = is_string($eigene) && trim($eigene) !== '' ? $eigene : (string) config('statamic-payments.currency', 'EUR');
 
-        if (is_string($eigene) && $currency !== null && mb_strtoupper($eigene) !== mb_strtoupper($currency)) {
+        if ($currency === null || mb_strtoupper($eigene) !== mb_strtoupper($currency)) {
             return 0;
         }
 
