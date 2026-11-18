@@ -155,6 +155,7 @@ return [
     'coupon_filter_live' => 'Gerade gültig',
     'coupon_code_taken' => 'Diesen Code gibt es schon.',
     'coupon_discount_exactly_one' => 'Entweder ein Prozentsatz oder ein Betrag, nicht beides und nicht keines.',
+    'coupon_currency_required' => 'Ein fester Betrag braucht eine Währung.',
     'coupon_offers_invalid' => 'Jeder Eintrag muss ein vorhandenes Angebot sein.',
     'coupon_action_activate' => 'Aktivieren',
     'coupon_action_deactivate' => 'Deaktivieren',

@@ -76,6 +76,10 @@ class CouponBatch
             throw new RuntimeException(__('statamic-offers::messages.coupon_discount_exactly_one'));
         }
 
+        if ($hasAmount && trim((string) ($options['currency'] ?? '')) === '') {
+            throw new RuntimeException(__('statamic-offers::messages.coupon_currency_required'));
+        }
+
         $namePattern = trim((string) ($options['name'] ?? ''));
 
         return DB::transaction(function () use ($count, $prefix, $length, $options, $namePattern) {

@@ -155,6 +155,7 @@ return [
     'coupon_filter_live' => 'Valid right now',
     'coupon_code_taken' => 'That code is already in use.',
     'coupon_discount_exactly_one' => 'Set either a percentage or an amount, not both and not neither.',
+    'coupon_currency_required' => 'A fixed amount needs a currency.',
     'coupon_offers_invalid' => 'Every entry must be an existing offer.',
     'coupon_action_activate' => 'Activate',
     'coupon_action_deactivate' => 'Deactivate',

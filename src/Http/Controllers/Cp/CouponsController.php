@@ -307,6 +307,11 @@ class CouponsController extends CpController
             $validator->errors()->add('percent', __('statamic-offers::messages.coupon_discount_exactly_one'));
             $validator->errors()->add('amount_cent', __('statamic-offers::messages.coupon_discount_exactly_one'));
         }
+
+        // Ein Festbetrag ohne Waehrung rabattierte bis 1.21.1 jede Waehrung.
+        if ($hasAmount && trim((string) $request->input('currency', '')) === '') {
+            $validator->errors()->add('currency', __('statamic-offers::messages.coupon_currency_required'));
+        }
     }
 
     /**
