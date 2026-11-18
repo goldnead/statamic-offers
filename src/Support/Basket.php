@@ -127,6 +127,9 @@ class Basket
     /** Der Gutschein, den `discount()` eingeloest hat, bis er freigegeben wird. */
     protected ?Coupon $claimed = null;
 
+    /** Der Code war beim Einloesen schon weg: ab da rechnet der Korb ohne ihn. */
+    protected bool $lost = false;
+
     /**
      * Only bumps this offer actually lists, and only ones that can be sold.
      *
@@ -274,7 +277,7 @@ class Basket
     /** The code as it will be applied, or null if it does not apply here. */
     public function coupon(): ?Coupon
     {
-        if (! $this->coupon || ! $this->coupon->isLive() || ! $this->coupon->appliesTo($this->offer)) {
+        if ($this->lost || ! $this->coupon || ! $this->coupon->isLive() || ! $this->coupon->appliesTo($this->offer)) {
             return null;
         }
 
@@ -305,7 +308,20 @@ class Basket
         // code was typed. Somebody who types a code and closes the tab has not
         // used it up. If the last use went to somebody else in between, the
         // sale still happens, at full price.
+        //
+        // Nicht still: der Kaeufer hat eben noch den Rabattpreis gesehen. Ab
+        // hier rechnet der Korb ohne Code (`coupon()`, `netCent()`), und die
+        // Kasse fragt `couponLost()`, um es ihm vor der Weiterleitung zu sagen.
         if (! $coupon->claim()) {
+            $this->lost = true;
+
+            Log::warning('statamic-offers: the last use of a coupon went to somebody else between basket and checkout; this payment is charged at full price.', [
+                'code' => $coupon->code,
+                'coupon_id' => $coupon->getKey(),
+                'offer' => $this->offer->handle,
+                'discount_cent' => $off,
+            ]);
+
             return null;
         }
 
@@ -323,7 +339,22 @@ class Basket
      * ein Anbieterfehler, `Checkout::start()` gibt null), ruft die aufrufende
      * Strecke das hier. Einmal: ein zweiter Aufruf und ein Korb ohne Einloesung
      * tun nichts.
+     *
+     * Scheitert die Zahlung erst spaeter (abgelaufen, abgebrochen, abgelehnt),
+     * gibt `Listeners\ReleaseCouponOfFailedPayment` die Einloesung zurueck,
+     * siehe {@see CouponUses}.
      */
+    /**
+     * Hat `discount()` den Code nicht mehr bekommen?
+     *
+     * Dann bucht die Zahlung den vollen Preis, obwohl die Seite vorher den
+     * Rabatt gezeigt hat. Die Kasse sagt es dem Kaeufer, bevor sie weiterleitet.
+     */
+    public function couponLost(): bool
+    {
+        return $this->lost;
+    }
+
     public function releaseCoupon(): void
     {
         $coupon = $this->claimed;

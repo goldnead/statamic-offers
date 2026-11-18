@@ -39,4 +39,10 @@ class FakeGateway implements PaymentGateway
     {
         $this->remote[$providerId] = new RemotePayment($providerId, Payment::STATUS_PAID, [], $email);
     }
+
+    /** Abgelaufen, gescheitert, abgebrochen: was der Anbieter ohne Geld meldet. */
+    public function markStatus(string $providerId, string $status): void
+    {
+        $this->remote[$providerId] = new RemotePayment($providerId, $status);
+    }
 }

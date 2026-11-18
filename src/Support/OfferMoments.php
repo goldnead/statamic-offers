@@ -122,6 +122,10 @@ class OfferMoments
             return;
         }
 
+        // Hinter dem Unique-Index, also einmal je Zahlung: eine Wiederaufnahme
+        // oder eine schon zurueckgegebene Zahlung zaehlt hier nach.
+        app(CouponUses::class)->paid($payment);
+
         CouponRedeemed::dispatch($coupon, $payment);
     }
 
