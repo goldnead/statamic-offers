@@ -54,6 +54,8 @@ class OfferSales
 
     private static ?bool $netto = null;
 
+    private static bool $limitGemeldet = false;
+
     /** Are the payment tables there to be asked? */
     public static function available(): bool
     {
@@ -194,12 +196,32 @@ class OfferSales
         return $row === null ? 0 : $row['sold'] + $row['reserved'];
     }
 
+    /**
+     * Ein Kontingent, das ohne die Zahlungstabellen nicht geprueft werden
+     * kann. Das Angebot wird dann nicht verkauft ({@see Offer::remainingQuantity()});
+     * gesagt wird es einmal je Anfrage, als Fehler und nicht als Hinweis.
+     */
+    public static function reportUncheckedLimit(Offer $offer): void
+    {
+        if (self::$limitGemeldet) {
+            return;
+        }
+
+        self::$limitGemeldet = true;
+
+        Log::error('statamic-offers: an offer with a quantity limit is not sold, because the payment tables are missing and the limit cannot be checked. Run the statamic-payments migrations.', [
+            'offer' => $offer->handle,
+            'quantity_limit' => $offer->quantity_limit,
+        ]);
+    }
+
     /** Only for tests: forget what this request already read. */
     public static function forget(): void
     {
         self::$karte = null;
         self::$verfuegbar = null;
         self::$netto = null;
+        self::$limitGemeldet = false;
     }
 
     /**
